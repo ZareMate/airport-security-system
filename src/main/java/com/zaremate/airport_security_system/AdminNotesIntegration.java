@@ -334,11 +334,13 @@ public final class AdminNotesIntegration {
                 result.append("\\n");
             }
 
-            result.append(category).append(" detected");
+            result.append(category)
+                    .append(" detected (last: ")
+                    .append(date)
+                    .append(")");
             first = false;
         }
 
-        result.append(" (last: ").append(date).append(")");
         return result.toString();
     }
 
