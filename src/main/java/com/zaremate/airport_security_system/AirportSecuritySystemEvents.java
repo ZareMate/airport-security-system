@@ -436,7 +436,7 @@ public final class AirportSecuritySystemEvents {
                         details.toString()
                 );
                 sendCommandResult(session, "DETECTED", details.toString());
-                broadcastStaff(session, name + " — DETECTED\n" + details);
+                broadcastStaff(session, (session.commandSource != null ? "[MANUAL] " : "") + name + " — DETECTED\n" + details);
                 AdminNotesIntegration.recordCheckResult(session.player.getUUID(), session.detected);
             } else if (!session.protectedKeys.isEmpty()) {
                 String list = String.join("\n", session.protectedKeys);
@@ -449,7 +449,7 @@ public final class AirportSecuritySystemEvents {
                         details
                 );
                 sendCommandResult(session, "INCONCLUSIVE", details);
-                broadcastStaff(session, name + " — INCONCLUSIVE\n" + details);
+                broadcastStaff(session, (session.commandSource != null ? "[MANUAL] " : "") + name + " — INCONCLUSIVE\n" + details);
             } else {
                 if (AirportSecuritySystemConfig.LOG_CLEAN_CHECKS.get())
                     LOGGER.info("[Airport Security System] {}: no blacklisted keybinds detected.", name);
@@ -473,10 +473,11 @@ public final class AirportSecuritySystemEvents {
                     name,
                     session.player.getUUID().toString(),
                     "INCONCLUSIVE",
-                    details
+                    details,
+                    session.commandSource != null
             );
             sendCommandResult(session, "INCONCLUSIVE", details);
-            broadcastStaff(session, name + " — INCONCLUSIVE\n" + details);
+            broadcastStaff(session, (session.commandSource != null ? "[MANUAL] " : "") + name + " — INCONCLUSIVE\n" + details);
         }
     }
 
