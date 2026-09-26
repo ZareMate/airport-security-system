@@ -193,22 +193,6 @@ public final class AdminNotesIntegration {
     }
 
     /**
-     * Compatibility wrapper for older callers.
-     *
-     * <p>ASS no longer creates a separate history note. All state is kept in
-     * the single ASS system note managed by {@link #recordCheckResult}.</p>
-     */
-    @Deprecated
-    public static void recordCheckHistory(UUID playerUuid, String status, Set<String> detectedKeys) {
-        if ("DETECTED".equalsIgnoreCase(status)) {
-            recordCheckResult(playerUuid, detectedKeys);
-        } else if ("CLEAN".equalsIgnoreCase(status)) {
-            recordCheckResult(playerUuid, Set.of());
-        }
-        // INCONCLUSIVE does not change the persistent detection/clear history.
-    }
-
-    /**
      * Updates the one ASS note while preserving every previously detected
      * category and its own last-detected date.
      *
@@ -625,6 +609,134 @@ public final class AdminNotesIntegration {
         }
 
         return cleaned.trim();
+    }
+
+    public static int showOffenses(net.minecraft.commands.CommandSourceStack source, String identifier) {
+        UUID playerUuid = resolvePlayerUuid(source, identifier);
+        if (playerUuid == null) {
+            source.sendFailure(net.minecraft.network.chat.Component.literal("Player not found: " + identifier));
+            return 0;
+        }
+
+        try {
+            @SuppressWarnings("unchecked")
+            List<Object> notes = (List<Object>) getNotesMethod.invoke(null, playerUuid);
+            LinkedHashMap<String, String> offenses = new LinkedHashMap<>();
+            for (Object note : findAssSystemNotes(notes)) {
+                mergeDetectionDates(offenses, parseDetectionDates(noteText(note)));
+            }
+
+            source.sendSuccess(() -> net.minecraft.network.chat.Component.literal("PLAYER OFFENSES").withStyle(s -> s.withColor(0xFFAA00).withBold(true)), false);
+            source.sendSuccess(() -> net.minecraft.network.chat.Component.literal("Player: " + playerName(source, playerUuid)), false);
+            source.sendSuccess(() -> net.minecraft.network.chat.Component.literal("UUID: " + playerUuid), false);
+
+            if (offenses.isEmpty()) {
+                source.sendSuccess(() -> net.minecraft.network.chat.Component.literal("No Airport Security System detections recorded."), false);
+            } else {
+                for (Map.Entry<String, String> entry : offenses.entrySet()) {
+                    source.sendSuccess(() -> net.minecraft.network.chat.Component.literal(
+                            entry.getKey() + " detected (last: " + (entry.getValue() == null ? "Unknown" : entry.getValue()) + ")"
+                    ).withColor(0xFF5555), false);
+                }
+            }
+            return 1;
+        } catch (Throwable ex) {
+            AirportSecuritySystem.LOGGER.warn("[Airport Security System] Failed to read offenses for {}.", playerUuid, unwrap(ex));
+            source.sendFailure(net.minecraft.network.chat.Component.literal("Failed to read Airport Security System offenses."));
+            return 0;
+        }
+    }
+
+    public static int showOffenseRate(net.minecraft.commands.CommandSourceStack source) {
+        var server = source.getServer();
+        if (server == null) {
+            source.sendFailure(net.minecraft.network.chat.Component.literal("Server unavailable."));
+            return 0;
+        }
+
+        int totalPlayers = 0;
+        int clearedPlayers = 0;
+        int detectedPlayers = 0;
+        Map<String, Integer> categoryCounts = new java.util.TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+
+        for (ServerPlayer player : server.getPlayerList().getPlayers()) {
+            Map<String, Object> state = getPlayerOffenseState(player.getUUID());
+            if (state == null) continue;
+            totalPlayers++;
+            if ("CLEAN".equals(state.get("status"))) {
+                clearedPlayers++;
+            } else if ("DETECTED".equals(state.get("status"))) {
+                detectedPlayers++;
+                Object categories = state.get("categories");
+                if (categories instanceof Set<?> set) {
+                    for (Object category : set) {
+                        if (category instanceof String value && !value.isBlank()) {
+                            categoryCounts.merge(value, 1, Integer::sum);
+                        }
+                    }
+                }
+            }
+        }
+
+        source.sendSuccess(() -> net.minecraft.network.chat.Component.literal("AIRPORT SECURITY OFFENSE RATE").withStyle(s -> s.withColor(0xFFAA00).withBold(true)), false);
+        source.sendSuccess(() -> net.minecraft.network.chat.Component.literal("Players with ASS records (online): " + totalPlayers), false);
+        source.sendSuccess(() -> net.minecraft.network.chat.Component.literal("Cleared: " + clearedPlayers + " (" + percent(clearedPlayers, totalPlayers) + "%)"), false);
+        source.sendSuccess(() -> net.minecraft.network.chat.Component.literal("Detected: " + detectedPlayers + " (" + percent(detectedPlayers, totalPlayers) + "%)"), false);
+        source.sendSuccess(() -> net.minecraft.network.chat.Component.literal("Cheat type distribution among detected players:"), false);
+
+        if (categoryCounts.isEmpty()) {
+            source.sendSuccess(() -> net.minecraft.network.chat.Component.literal("No current detections recorded."), false);
+        } else {
+            for (Map.Entry<String, Integer> entry : categoryCounts.entrySet()) {
+                int count = entry.getValue();
+                source.sendSuccess(() -> net.minecraft.network.chat.Component.literal(
+                        entry.getKey() + ": " + count + " player(s) — " + percent(count, detectedPlayers) + "% of detected players"
+                ).withColor(0xFF5555), false);
+            }
+        }
+        return 1;
+    }
+
+    private static UUID resolvePlayerUuid(net.minecraft.commands.CommandSourceStack source, String identifier) {
+        if (identifier == null || identifier.isBlank()) return null;
+        try {
+            return UUID.fromString(identifier);
+        } catch (IllegalArgumentException ignored) {
+        }
+        var server = source.getServer();
+        if (server == null) return null;
+        ServerPlayer online = server.getPlayerList().getPlayerByName(identifier);
+        if (online != null) return online.getUUID();
+        var cache = server.getProfileCache();
+        if (cache != null) {
+            try {
+                var profile = cache.get(identifier);
+                if (profile.isPresent()) return profile.get().getId();
+            } catch (Throwable ignored) {
+            }
+        }
+        return null;
+    }
+
+    private static String playerName(net.minecraft.commands.CommandSourceStack source, UUID uuid) {
+        var server = source.getServer();
+        if (server != null) {
+            ServerPlayer online = server.getPlayerList().getPlayer(uuid);
+            if (online != null) return online.getGameProfile().getName();
+            var cache = server.getProfileCache();
+            if (cache != null) {
+                try {
+                    var profile = cache.get(uuid);
+                    if (profile.isPresent()) return profile.get().getName();
+                } catch (Throwable ignored) {
+                }
+            }
+        }
+        return uuid.toString();
+    }
+
+    private static int percent(int value, int total) {
+        return total <= 0 ? 0 : Math.round((value * 1000f) / total) / 10;
     }
 
     private static Throwable unwrap(Throwable throwable) {
