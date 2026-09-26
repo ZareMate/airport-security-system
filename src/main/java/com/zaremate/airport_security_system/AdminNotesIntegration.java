@@ -29,11 +29,7 @@ public final class AdminNotesIntegration {
     private static volatile boolean initialized;
     private static volatile boolean available;
 
-    private static Method getNotesMethod;
-    private static Method addSystemNoteMethod;
-    private static Method editNoteMethod;
-    private static Method removeNoteMethod;
-    private static Method getPlayersMethod;
+    private static Method upsertSystemCategoryNoteMethod;
 
     private AdminNotesIntegration() {}
 
@@ -42,29 +38,65 @@ public final class AdminNotesIntegration {
             return;
         }
 
+        syncPlayerFromStore(playerUuid);
+    }
+
+    /**
+     * Mirrors the authoritative ASS offense state into the dedicated [ASS]
+     * Admin Notes category. The Admin Notes entry is only a display mirror;
+     * ASS offense storage remains authoritative.
+     */
+    public static void syncPlayerFromStore(UUID playerUuid) {
+        if (playerUuid == null || !initialize()) {
+            return;
+        }
+
         try {
-            @SuppressWarnings("unchecked")
-            List<Object> notes = (List<Object>) getNotesMethod.invoke(null, playerUuid);
-            String today = LocalDate.now().format(DATE_FORMAT);
+            AirportSecuritySystemOffenses.PlayerRecord record =
+                    AirportSecuritySystemOffenses.getPlayer(playerUuid);
 
-            Set<String> categories = new LinkedHashSet<>();
-            if (detectedKeys != null) {
-                for (String key : detectedKeys) {
-                    String category = detectionCategory(key);
-                    if (!category.isBlank()) {
-                        categories.add(category);
-                    }
+            if (record == null) {
+                return;
+            }
+
+            StringBuilder text = new StringBuilder();
+
+            for (Map.Entry<String, String> entry :
+                    record.getDetectionDates().entrySet()) {
+                if (text.length() > 0) {
+                    text.append("\\n");
                 }
+
+                text.append(entry.getKey())
+                        .append(" detected (last: ")
+                        .append(entry.getValue())
+                        .append(")");
             }
 
-            if (!categories.isEmpty()) {
-                upsertDetectionNote(playerUuid, notes, categories, today);
-            } else {
-                upsertClearedNote(playerUuid, notes, today);
+            if ("CLEAN".equals(record.getStatus())
+                    && record.getClearedDate() != null) {
+                if (text.length() > 0) {
+                    text.append("\\n");
+                }
+
+                text.append("cleared (last: ")
+                        .append(record.getClearedDate())
+                        .append(")");
             }
+
+            if (text.length() == 0) {
+                return;
+            }
+
+            upsertSystemCategoryNoteMethod.invoke(
+                    null,
+                    playerUuid,
+                    "ASS",
+                    text.toString()
+            );
         } catch (Throwable ex) {
             AirportSecuritySystem.LOGGER.warn(
-                    "[Airport Security System] Failed to update Admin Notes for {}.",
+                    "[Airport Security System] Failed to sync [ASS] Admin Notes data for {}.",
                     playerUuid,
                     unwrap(ex)
             );
@@ -86,24 +118,12 @@ public final class AdminNotesIntegration {
             try {
                 Class<?> apiClass = Class.forName(API_CLASS_NAME);
 
-                getNotesMethod = apiClass.getMethod("getNotes", UUID.class);
-                addSystemNoteMethod = apiClass.getMethod(
-                        "addSystemNote",
+                upsertSystemCategoryNoteMethod = apiClass.getMethod(
+                        "upsertSystemCategoryNote",
                         UUID.class,
+                        String.class,
                         String.class
                 );
-                editNoteMethod = apiClass.getMethod(
-                        "editNote",
-                        UUID.class,
-                        UUID.class,
-                        String.class
-                );
-                removeNoteMethod = apiClass.getMethod(
-                        "removeNote",
-                        UUID.class,
-                        UUID.class
-                );
-                getPlayersMethod = apiClass.getMethod("getPlayers");
 
                 available = true;
 
@@ -119,270 +139,6 @@ public final class AdminNotesIntegration {
 
             return available;
         }
-    }
-
-    /**
-     * Updates the one ASS note while preserving every previously detected
-     * category and its own last-detected date.
-     *
-     * <p>A later detection removes only the "cleared" line. Categories that
-     * were not detected in the current check retain their previous dates.</p>
-     */
-    private static void upsertDetectionNote(
-            UUID playerUuid,
-            List<Object> notes,
-            Set<String> newCategories,
-            String date
-    ) throws ReflectiveOperationException {
-        List<Object> assNotes = findAssSystemNotes(notes);
-
-        LinkedHashMap<String, String> detectionDates = new LinkedHashMap<>();
-
-        for (Object note : assNotes) {
-            mergeDetectionDates(detectionDates, parseDetectionDates(noteText(note)));
-        }
-
-        for (String category : newCategories) {
-            detectionDates.put(category, date);
-        }
-
-        String formatted = detectionNote(detectionDates);
-
-        if (assNotes.isEmpty()) {
-            addSystemNoteMethod.invoke(null, playerUuid, formatted);
-            return;
-        }
-
-        Object primary = assNotes.get(0);
-        UUID primaryId = noteId(primary);
-
-        if (primaryId != null) {
-            editNoteMethod.invoke(null, playerUuid, primaryId, formatted);
-        }
-
-        removeDuplicateAssNotes(playerUuid, assNotes, primary);
-    }
-
-    /**
-     * Adds or refreshes the "cleared" line without deleting detection history.
-     */
-    private static void upsertClearedNote(
-            UUID playerUuid,
-            List<Object> notes,
-            String date
-    ) throws ReflectiveOperationException {
-        List<Object> assNotes = findAssSystemNotes(notes);
-
-        LinkedHashMap<String, String> detectionDates = new LinkedHashMap<>();
-        for (Object note : assNotes) {
-            mergeDetectionDates(detectionDates, parseDetectionDates(noteText(note)));
-        }
-
-        String formatted = detectionNoteWithCleared(detectionDates, date);
-
-        if (assNotes.isEmpty()) {
-            addSystemNoteMethod.invoke(null, playerUuid, formatted);
-            return;
-        }
-
-        Object primary = assNotes.get(0);
-        UUID primaryId = noteId(primary);
-
-        if (primaryId != null) {
-            editNoteMethod.invoke(null, playerUuid, primaryId, formatted);
-        }
-
-        removeDuplicateAssNotes(playerUuid, assNotes, primary);
-    }
-
-    private static void removeDuplicateAssNotes(
-            UUID playerUuid,
-            List<Object> assNotes,
-            Object primary
-    ) throws ReflectiveOperationException {
-        UUID primaryId = noteId(primary);
-
-        for (Object note : assNotes) {
-            if (note == primary) {
-                continue;
-            }
-
-            UUID duplicateId = noteId(note);
-            if (duplicateId != null && !duplicateId.equals(primaryId)) {
-                removeNoteMethod.invoke(null, playerUuid, duplicateId);
-            }
-        }
-    }
-
-    private static List<Object> findAssSystemNotes(List<Object> notes)
-            throws ReflectiveOperationException {
-        List<Object> result = new ArrayList<>();
-
-        for (Object note : notes) {
-            if (!isSystemNote(note)) {
-                continue;
-            }
-
-            if (isAirportSecuritySystemNote(noteText(note))) {
-                result.add(note);
-            }
-        }
-
-        return result;
-    }
-
-    private static boolean isAirportSecuritySystemNote(String text) {
-        if (text == null || text.isBlank()) {
-            return false;
-        }
-
-        String normalized = text.trim().toLowerCase(Locale.ROOT);
-
-        return normalized.startsWith("ass_check|")
-                || normalized.contains(" detected")
-                || normalized.contains("cleared (last:");
-    }
-
-    private static Map<String, String> parseDetectionDates(String text) {
-        LinkedHashMap<String, String> result = new LinkedHashMap<>();
-
-        if (text == null || text.isBlank()) {
-            return result;
-        }
-
-        String commonDate = parseLatestDate(text);
-
-        for (String line : text.trim().split("\\R")) {
-            String value = line.trim();
-            String normalized = value.toLowerCase(Locale.ROOT);
-
-            if (normalized.startsWith("ass_check|")
-                    || normalized.startsWith("cleared (last:")) {
-                continue;
-            }
-
-            int detectedIndex = normalized.indexOf(" detected");
-            if (detectedIndex <= 0) {
-                continue;
-            }
-
-            String category = value.substring(0, detectedIndex).trim();
-            if (category.isBlank()) {
-                continue;
-            }
-
-            String date = parseLatestDate(value);
-            if (date == null) {
-                date = commonDate;
-            }
-
-            result.put(category, date);
-        }
-
-        return result;
-    }
-
-    private static void mergeDetectionDates(
-            Map<String, String> target,
-            Map<String, String> source
-    ) {
-        for (Map.Entry<String, String> entry : source.entrySet()) {
-            String existing = target.get(entry.getKey());
-            if (existing == null || isLaterDate(entry.getValue(), existing)) {
-                target.put(entry.getKey(), entry.getValue());
-            }
-        }
-    }
-
-    private static boolean isLaterDate(String candidate, String current) {
-        if (candidate == null || candidate.isBlank()) {
-            return false;
-        }
-
-        if (current == null || current.isBlank()) {
-            return true;
-        }
-
-        try {
-            LocalDate candidateDate = LocalDate.parse(candidate, DATE_FORMAT);
-            LocalDate currentDate = LocalDate.parse(current, DATE_FORMAT);
-            return candidateDate.isAfter(currentDate);
-        } catch (Exception ignored) {
-            return !candidate.equals(current);
-        }
-    }
-
-    private static String detectionNote(Map<String, String> detections) {
-        StringBuilder result = new StringBuilder();
-        boolean first = true;
-
-        for (Map.Entry<String, String> entry : detections.entrySet()) {
-            if (!first) {
-                result.append("\\n");
-            }
-
-            result.append(entry.getKey())
-                    .append(" detected (last: ")
-                    .append(entry.getValue() == null ? "Unknown" : entry.getValue())
-                    .append(")");
-
-            first = false;
-        }
-
-        if (result.isEmpty()) {
-            return "detected";
-        }
-
-        return result.toString();
-    }
-
-    private static String detectionNoteWithCleared(
-            Map<String, String> detections,
-            String clearedDate
-    ) {
-        StringBuilder result = new StringBuilder(detectionNote(detections));
-
-        if (!result.isEmpty() && !result.toString().equals("detected")) {
-            result.append("\\n");
-        } else if (result.toString().equals("detected")) {
-            result.setLength(0);
-        }
-
-        result.append("cleared (last: ")
-                .append(clearedDate)
-                .append(")");
-
-        return result.toString();
-    }
-
-    private static String parseLatestDate(String text) {
-        if (text == null) return null;
-        int start = text.lastIndexOf("(last:");
-        if (start < 0) return null;
-        int valueStart = start + "(last:".length();
-        int end = text.indexOf(')', valueStart);
-        if (end < 0) return null;
-        String date = text.substring(valueStart, end).trim();
-        return date.isBlank() ? null : date;
-    }
-
-    private static boolean isSystemNote(Object note)
-            throws ReflectiveOperationException {
-        Method method = note.getClass().getMethod("isSystem");
-        Object value = method.invoke(note);
-        return Boolean.TRUE.equals(value);
-    }
-
-    private static UUID noteId(Object note) throws ReflectiveOperationException {
-        Method method = note.getClass().getMethod("id");
-        Object value = method.invoke(note);
-        return value instanceof UUID uuid ? uuid : null;
-    }
-
-    private static String noteText(Object note) throws ReflectiveOperationException {
-        Method method = note.getClass().getMethod("text");
-        Object value = method.invoke(note);
-        return value instanceof String text ? text : null;
     }
 
     private static String detectionCategory(String key) {
