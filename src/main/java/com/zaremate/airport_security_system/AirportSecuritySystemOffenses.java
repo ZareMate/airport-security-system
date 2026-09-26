@@ -290,8 +290,14 @@ public final class AirportSecuritySystemOffenses {
 
                     String text =
                             (String) note.getClass().getMethod("text").invoke(note);
+                    String author = null;
+                    try {
+                        author = (String) note.getClass().getMethod("author").invoke(note);
+                    } catch (Throwable ignored) {
+                    }
 
-                    if (!isLegacyAssNote(text)) {
+                    if (!isLegacyAssNote(text)
+                            && (author == null || !author.equalsIgnoreCase("ASS"))) {
                         continue;
                     }
 
