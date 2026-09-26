@@ -33,6 +33,7 @@ public final class AdminNotesIntegration {
     private static Method addSystemNoteMethod;
     private static Method editNoteMethod;
     private static Method removeNoteMethod;
+    private static Method getPlayersMethod;
 
     private AdminNotesIntegration() {}
 
@@ -174,7 +175,7 @@ public final class AdminNotesIntegration {
                         UUID.class,
                         UUID.class
                 );
-
+                getPlayersMethod = apiClass.getMethod("getPlayers");
 
                 available = true;
 
@@ -655,8 +656,6 @@ public final class AdminNotesIntegration {
         }
 
         try {
-            Method getPlayersMethod = Class.forName(API_CLASS_NAME).getMethod("getPlayers");
-
             @SuppressWarnings("unchecked")
             List<UUID> playerUuids = (List<UUID>) getPlayersMethod.invoke(null);
 
