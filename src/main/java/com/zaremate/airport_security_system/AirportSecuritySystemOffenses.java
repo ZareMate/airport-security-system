@@ -146,6 +146,16 @@ public final class AirportSecuritySystemOffenses {
         return List.copyOf(PLAYERS.keySet());
     }
 
+    static synchronized Map<UUID, PlayerRecord> getPlayerRecords() {
+        ensureInitialized();
+
+        Map<UUID, PlayerRecord> result = new LinkedHashMap<>();
+        for (Map.Entry<UUID, PlayerRecord> entry : PLAYERS.entrySet()) {
+            result.put(entry.getKey(), entry.getValue().copy());
+        }
+        return result;
+    }
+
     public static synchronized List<PlayerRecord> getPlayers() {
         ensureInitialized();
 
@@ -688,7 +698,9 @@ public final class AirportSecuritySystemOffenses {
         }
 
         public Map<String, String> getDetectionDates() {
-            return Map.copyOf(detectionDates);
+            return java.util.Collections.unmodifiableMap(
+                    new LinkedHashMap<>(detectionDates)
+            );
         }
 
         public String getClearedDate() {
@@ -712,7 +724,9 @@ public final class AirportSecuritySystemOffenses {
         }
 
         public Map<String, Long> getDetectionCounts() {
-            return Map.copyOf(detectionCounts);
+            return java.util.Collections.unmodifiableMap(
+                    new LinkedHashMap<>(detectionCounts)
+            );
         }
 
         public String getStatus() {
