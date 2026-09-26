@@ -434,7 +434,8 @@ public final class AirportSecuritySystemEvents {
                         name,
                         session.player.getUUID().toString(),
                         "DETECTED",
-                        details.toString()
+                        details.toString(),
+                        session.commandSource != null
                 );
                 sendCommandResult(session, "DETECTED", details.toString());
                 broadcastStaff(session, (session.commandSource != null ? "[MANUAL] " : "") + name + " — DETECTED\n" + details);
@@ -447,7 +448,8 @@ public final class AirportSecuritySystemEvents {
                         name,
                         session.player.getUUID().toString(),
                         "INCONCLUSIVE",
-                        details
+                        details,
+                        session.commandSource != null
                 );
                 sendCommandResult(session, "INCONCLUSIVE", details);
                 broadcastStaff(session, (session.commandSource != null ? "[MANUAL] " : "") + name + " — INCONCLUSIVE\n" + details);
@@ -463,7 +465,8 @@ public final class AirportSecuritySystemEvents {
                             name,
                             session.player.getUUID().toString(),
                             "CLEAN",
-                            details
+                            details,
+                            true
                     );
                 }
             }
