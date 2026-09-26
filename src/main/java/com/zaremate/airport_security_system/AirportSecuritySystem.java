@@ -15,6 +15,7 @@ public final class AirportSecuritySystem {
     public AirportSecuritySystem(ModContainer container) {
         container.registerConfig(ModConfig.Type.COMMON, AirportSecuritySystemConfig.SPEC);
         NeoForge.EVENT_BUS.register(AirportSecuritySystemEvents.class);
+        NeoForge.EVENT_BUS.register(AirportSecuritySystemOffenses.class);
         LOGGER.info("Airport Security System loaded.");
     }
 }
