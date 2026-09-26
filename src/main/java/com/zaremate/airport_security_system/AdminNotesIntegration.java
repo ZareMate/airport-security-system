@@ -37,12 +37,20 @@ public final class AdminNotesIntegration {
     /**
      * Updates the player's Admin Notes after a completed security check.
      *
-     * <p>Detected categories become persistent system notes such as:
-     * {@code x-ray detected (last: 26-09-2026)}.</p>
+     * <p>Airport Security System keeps exactly one system note per player for
+     * its detection history. Multiple detections are stored together:</p>
      *
-     * <p>Recurring detections update their existing note instead of creating
-     * another note. A {@code cleared} note is removed as soon as a detection
-     * appears.</p>
+     * <pre>
+     * x-ray detected
+     * freecam detected
+     * (last: 26-09-2026)
+     * </pre>
+     *
+     * <p>A clean check uses the same single system note:</p>
+     *
+     * <pre>cleared (last: 26-09-2026)</pre>
+     *
+     * <p>Existing manually authored Admin Notes are never changed.</p>
      */
     public static void recordCheckResult(UUID playerUuid, Set<String> detectedKeys) {
         if (playerUuid == null || !initialize()) {
@@ -55,9 +63,8 @@ public final class AdminNotesIntegration {
             String today = LocalDate.now().format(DATE_FORMAT);
 
             if (detectedKeys != null && !detectedKeys.isEmpty()) {
-                removeClearedNotes(playerUuid, notes);
-
                 Set<String> categories = new LinkedHashSet<>();
+
                 for (String key : detectedKeys) {
                     String category = detectionCategory(key);
                     if (!category.isBlank()) {
@@ -65,46 +72,14 @@ public final class AdminNotesIntegration {
                     }
                 }
 
-                for (String category : categories) {
-                    upsertDetectionNote(playerUuid, notes, category, today);
+                if (!categories.isEmpty()) {
+                    upsertDetectionNote(playerUuid, notes, categories, today);
                 }
 
                 return;
             }
 
-            // Only create/update "cleared" when there are no existing notes.
-            // If the only existing system note(s) are cleared, just refresh
-            // their date rather than creating duplicates.
-            if (notes.isEmpty()) {
-                addSystemNoteMethod.invoke(
-                        null,
-                        playerUuid,
-                        clearedNote(today)
-                );
-                return;
-            }
-
-            List<Object> clearedNotes = findClearedNotes(notes);
-            if (clearedNotes.size() == notes.size() && !clearedNotes.isEmpty()) {
-                Object note = clearedNotes.get(0);
-                UUID noteId = noteId(note);
-                if (noteId != null) {
-                    editNoteMethod.invoke(
-                            null,
-                            playerUuid,
-                            noteId,
-                            clearedNote(today)
-                    );
-
-                    // Remove any accidental duplicate cleared notes.
-                    for (int i = 1; i < clearedNotes.size(); i++) {
-                        UUID duplicateId = noteId(clearedNotes.get(i));
-                        if (duplicateId != null) {
-                            removeNoteMethod.invoke(null, playerUuid, duplicateId);
-                        }
-                    }
-                }
-            }
+            upsertClearedNote(playerUuid, notes, today);
         } catch (Throwable ex) {
             AirportSecuritySystem.LOGGER.warn(
                     "[Airport Security System] Failed to update Admin Notes for {}.",
@@ -163,9 +138,122 @@ public final class AdminNotesIntegration {
         }
     }
 
+    /**
+     * Creates/updates the single ASS system detection note.
+     *
+     * <p>If older versions created one note per category, those notes are
+     * consolidated into one note the next time that player is detected.</p>
+     */
+    private static void upsertDetectionNote(
+            UUID playerUuid,
+            List<Object> notes,
+            Set<String> newCategories,
+            String date
+    ) throws ReflectiveOperationException {
+        List<Object> detectionNotes = findDetectionNotes(notes);
+
+        Set<String> allCategories = new LinkedHashSet<>();
+
+        for (Object note : detectionNotes) {
+            allCategories.addAll(parseDetectionCategories(noteText(note)));
+        }
+
+        allCategories.addAll(newCategories);
+
+        String formatted = detectionNote(allCategories, date);
+
+        if (detectionNotes.isEmpty()) {
+            addSystemNoteMethod.invoke(null, playerUuid, formatted);
+            return;
+        }
+
+        Object primary = detectionNotes.get(0);
+        UUID primaryId = noteId(primary);
+
+        if (primaryId != null) {
+            editNoteMethod.invoke(null, playerUuid, primaryId, formatted);
+        }
+
+        // Delete every additional ASS-generated detection note, including
+        // old per-category notes from previous versions.
+        for (int i = 1; i < detectionNotes.size(); i++) {
+            UUID duplicateId = noteId(detectionNotes.get(i));
+            if (duplicateId != null) {
+                removeNoteMethod.invoke(null, playerUuid, duplicateId);
+            }
+        }
+
+        // Any old "cleared" ASS note is no longer valid after a detection.
+        removeClearedNotes(playerUuid, notes);
+    }
+
+    private static void upsertClearedNote(
+            UUID playerUuid,
+            List<Object> notes,
+            String date
+    ) throws ReflectiveOperationException {
+        List<Object> detectionNotes = findDetectionNotes(notes);
+        List<Object> clearedNotes = findClearedNotes(notes);
+
+        // A clean result replaces the ASS detection state with one cleared note.
+        for (Object note : detectionNotes) {
+            UUID noteId = noteId(note);
+            if (noteId != null) {
+                removeNoteMethod.invoke(null, playerUuid, noteId);
+            }
+        }
+
+        if (clearedNotes.isEmpty()) {
+            addSystemNoteMethod.invoke(
+                    null,
+                    playerUuid,
+                    clearedNote(date)
+            );
+            return;
+        }
+
+        Object primary = clearedNotes.get(0);
+        UUID primaryId = noteId(primary);
+
+        if (primaryId != null) {
+            editNoteMethod.invoke(
+                    null,
+                    playerUuid,
+                    primaryId,
+                    clearedNote(date)
+            );
+        }
+
+        // Remove accidental/legacy duplicate cleared notes.
+        for (int i = 1; i < clearedNotes.size(); i++) {
+            UUID duplicateId = noteId(clearedNotes.get(i));
+            if (duplicateId != null) {
+                removeNoteMethod.invoke(null, playerUuid, duplicateId);
+            }
+        }
+    }
+
+    private static List<Object> findDetectionNotes(List<Object> notes)
+            throws ReflectiveOperationException {
+        List<Object> result = new ArrayList<>();
+
+        for (Object note : notes) {
+            if (!isSystemNote(note)) {
+                continue;
+            }
+
+            String text = noteText(note);
+            if (isAirportSecuritySystemDetectionNote(text)) {
+                result.add(note);
+            }
+        }
+
+        return result;
+    }
+
     private static void removeClearedNotes(UUID playerUuid, List<Object> notes)
             throws ReflectiveOperationException {
-        for (Object note : new ArrayList<>(notes)) {
+        for (Object note : notes) {
             if (!isSystemNote(note)) {
                 continue;
             }
@@ -182,41 +270,6 @@ public final class AdminNotesIntegration {
         }
     }
 
-    private static void upsertDetectionNote(
-            UUID playerUuid,
-            List<Object> notes,
-            String category,
-            String date
-    ) throws ReflectiveOperationException {
-        String prefix = category + " detected";
-        String formatted = prefix + " (last: " + date + ")";
-
-        for (Object note : notes) {
-            if (!isSystemNote(note)) {
-                continue;
-            }
-
-            String text = noteText(note);
-            if (text == null || !text.regionMatches(
-                    true,
-                    0,
-                    prefix,
-                    0,
-                    prefix.length()
-            )) {
-                continue;
-            }
-
-            UUID noteId = noteId(note);
-            if (noteId != null) {
-                editNoteMethod.invoke(null, playerUuid, noteId, formatted);
-                return;
-            }
-        }
-
-        addSystemNoteMethod.invoke(null, playerUuid, formatted);
-    }
-
     private static List<Object> findClearedNotes(List<Object> notes)
             throws ReflectiveOperationException {
         List<Object> result = new ArrayList<>();
@@ -228,6 +281,65 @@ public final class AdminNotesIntegration {
         }
 
         return result;
+    }
+
+    private static boolean isAirportSecuritySystemDetectionNote(String text) {
+        if (text == null || text.isBlank()) {
+            return false;
+        }
+
+        String normalized = text.trim().toLowerCase(Locale.ROOT);
+        return !normalized.startsWith("cleared (last:")
+                && normalized.contains("detected");
+    }
+
+    private static Set<String> parseDetectionCategories(String text) {
+        Set<String> categories = new LinkedHashSet<>();
+        if (text == null || text.isBlank()) {
+            return categories;
+        }
+
+        String body = text.trim();
+
+        int lastMarker = body.toLowerCase(Locale.ROOT).lastIndexOf(" (last:");
+        if (lastMarker >= 0) {
+            body = body.substring(0, lastMarker).trim();
+        }
+
+        for (String line : body.split("\\R")) {
+            String value = line.trim();
+            int detectedIndex = value.toLowerCase(Locale.ROOT).indexOf(" detected");
+
+            if (detectedIndex > 0) {
+                String category = value.substring(0, detectedIndex).trim();
+                if (!category.isBlank()) {
+                    categories.add(category);
+                }
+            }
+        }
+
+        return categories;
+    }
+
+    private static String detectionNote(Set<String> categories, String date) {
+        if (categories.isEmpty()) {
+            return "detected (last: " + date + ")";
+        }
+
+        StringBuilder result = new StringBuilder();
+        boolean first = true;
+
+        for (String category : categories) {
+            if (!first) {
+                result.append("\\n");
+            }
+
+            result.append(category).append(" detected");
+            first = false;
+        }
+
+        result.append(" (last: ").append(date).append(")");
+        return result.toString();
     }
 
     private static boolean isClearedNote(String text) {
@@ -325,6 +437,7 @@ public final class AdminNotesIntegration {
         String[] parts = cleaned.split("\\.");
         for (String part : parts) {
             String candidate = part.trim();
+
             if (candidate.isEmpty()
                     || candidate.equals("key")
                     || candidate.equals("module")
