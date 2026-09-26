@@ -66,7 +66,7 @@ public final class AirportSecuritySystemEvents {
                         .requires(source -> source.hasPermission(3)
                                 || LuckPermsPermissions.hasPermission(source, AirportSecuritySystemConfig.COMMAND_PERMISSION.get()))
                         .then(Commands.argument("player", StringArgumentType.word())
-                                .executes(ctx -> AdminNotesIntegration.showOffenses(
+                                .executes(ctx -> showOffenses(
                                         ctx.getSource(),
                                         StringArgumentType.getString(ctx, "player"))))
         );
@@ -75,8 +75,171 @@ public final class AirportSecuritySystemEvents {
                 Commands.literal("offense_rate")
                         .requires(source -> source.hasPermission(3)
                                 || LuckPermsPermissions.hasPermission(source, AirportSecuritySystemConfig.COMMAND_PERMISSION.get()))
-                        .executes(ctx -> AdminNotesIntegration.showOffenseRate(ctx.getSource()))
+                        .executes(ctx -> showOffenseRate(ctx.getSource()))
         );
+    }
+
+    private static int showOffenses(
+            net.minecraft.commands.CommandSourceStack source,
+            String identifier
+    ) {
+        UUID playerUuid = AirportSecuritySystemOffenses.resolvePlayer(identifier);
+
+        if (playerUuid == null) {
+            source.sendFailure(Component.literal("No ASS offense record found for: " + identifier));
+            return 0;
+        }
+
+        AirportSecuritySystemOffenses.PlayerRecord record =
+                AirportSecuritySystemOffenses.getPlayer(playerUuid);
+
+        if (record == null) {
+            source.sendFailure(Component.literal("No ASS offense record found for: " + identifier));
+            return 0;
+        }
+
+        source.sendSuccess(() -> Component.literal(
+                "───────────────────────────────────"
+        ).withColor(0x555555), false);
+        source.sendSuccess(() -> Component.literal(
+                "PLAYER OFFENSES"
+        ).withStyle(s -> s.withColor(0xFFAA00).withBold(true)), false);
+        source.sendSuccess(() -> Component.literal(
+                "Player: " + record.getName()
+        ), false);
+        source.sendSuccess(() -> Component.literal(
+                "UUID: " + playerUuid
+        ).withColor(0x777777), false);
+
+        Map<String, String> detections = record.getDetectionDates();
+
+        if (detections.isEmpty()) {
+            source.sendSuccess(() -> Component.literal(
+                    "No Airport Security System detections recorded."
+            ), false);
+        } else {
+            for (Map.Entry<String, String> entry : detections.entrySet()) {
+                source.sendSuccess(() -> Component.literal(
+                        entry.getKey() + " detected (last: " + entry.getValue() + ")"
+                ).withColor(0xFF5555), false);
+            }
+        }
+
+        source.sendSuccess(() -> Component.literal(
+                "Current status: " + record.getStatus()
+        ), false);
+        source.sendSuccess(() -> Component.literal(
+                "───────────────────────────────────"
+        ).withColor(0x555555), false);
+        return 1;
+    }
+
+    private static int showOffenseRate(net.minecraft.commands.CommandSourceStack source) {
+        List<AirportSecuritySystemOffenses.PlayerRecord> players =
+                AirportSecuritySystemOffenses.getPlayers();
+
+        int totalPlayers = players.size();
+        int clearedPlayers = 0;
+        int detectedPlayers = 0;
+        long totalChecks = 0;
+        long cleanChecks = 0;
+        long detectedChecks = 0;
+        long inconclusiveChecks = 0;
+        Map<String, Long> categoryCounts =
+                new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+
+        for (AirportSecuritySystemOffenses.PlayerRecord record : players) {
+            totalChecks += record.getTotalChecks();
+            cleanChecks += record.getCleanChecks();
+            detectedChecks += record.getDetectedChecks();
+            inconclusiveChecks += record.getInconclusiveChecks();
+
+            if ("CLEAN".equals(record.getStatus())) {
+                clearedPlayers++;
+            } else if ("DETECTED".equals(record.getStatus())) {
+                detectedPlayers++;
+            }
+
+            for (Map.Entry<String, Long> entry : record.getDetectionCounts().entrySet()) {
+                categoryCounts.merge(entry.getKey(), entry.getValue(), Long::sum);
+            }
+        }
+
+        source.sendSuccess(() -> Component.literal(
+                "───────────────────────────────────"
+        ).withColor(0x555555), false);
+        source.sendSuccess(() -> Component.literal(
+                "AIRPORT SECURITY OFFENSE RATE"
+        ).withStyle(s -> s.withColor(0xFFAA00).withBold(true)), false);
+
+        source.sendSuccess(() -> Component.literal(
+                "Players with ASS records: " + totalPlayers
+        ), false);
+        source.sendSuccess(() -> Component.literal(
+                "Cleared: " + clearedPlayers + " ("
+                        + percent(clearedPlayers, totalPlayers) + "%)"
+        ), false);
+        source.sendSuccess(() -> Component.literal(
+                "Detected: " + detectedPlayers + " ("
+                        + percent(detectedPlayers, totalPlayers) + "%)"
+        ), false);
+
+        source.sendSuccess(() -> Component.literal(""), false);
+        source.sendSuccess(() -> Component.literal(
+                "Recorded checks:"
+        ), false);
+        source.sendSuccess(() -> Component.literal(
+                "Total: " + totalChecks
+        ), false);
+        source.sendSuccess(() -> Component.literal(
+                "Cleared: " + cleanChecks + " ("
+                        + percent(cleanChecks, totalChecks) + "%)"
+        ), false);
+        source.sendSuccess(() -> Component.literal(
+                "Detected: " + detectedChecks + " ("
+                        + percent(detectedChecks, totalChecks) + "%)"
+        ), false);
+        source.sendSuccess(() -> Component.literal(
+                "Inconclusive: " + inconclusiveChecks + " ("
+                        + percent(inconclusiveChecks, totalChecks) + "%)"
+        ), false);
+
+        source.sendSuccess(() -> Component.literal(""), false);
+        source.sendSuccess(() -> Component.literal(
+                "Cheat type distribution:"
+        ), false);
+
+        if (categoryCounts.isEmpty()) {
+            source.sendSuccess(() -> Component.literal(
+                    "No detections recorded."
+            ), false);
+        } else {
+            for (Map.Entry<String, Long> entry : categoryCounts.entrySet()) {
+                long count = entry.getValue();
+                source.sendSuccess(() -> Component.literal(
+                        entry.getKey() + ": " + count
+                                + " detection(s) — "
+                                + percent(count, detectedChecks)
+                                + "% of detected checks"
+                ).withColor(0xFF5555), false);
+            }
+        }
+
+        source.sendSuccess(() -> Component.literal(
+                "───────────────────────────────────"
+        ).withColor(0x555555), false);
+        return 1;
+    }
+
+    private static String playerNameFallback(ServerPlayer player) {
+        return player.getGameProfile().getName();
+    }
+
+    private static long percent(long value, long total) {
+        if (total <= 0) {
+            return 0;
+        }
+        return Math.round((value * 1000.0) / total) / 10;
     }
 
     /**
