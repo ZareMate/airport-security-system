@@ -637,7 +637,6 @@ public final class AirportSecuritySystemEvents {
                         "DETECTED",
                         session.detected
                 );
-                AdminNotesIntegration.recordCheckResult(session.player.getUUID(), session.detected);
             } else if (!session.protectedKeys.isEmpty()) {
                 String list = String.join("\n", session.protectedKeys);
                 LOGGER.info("[Airport Security System] {}: keybind probe protected for:\n{}", name, list);
@@ -668,7 +667,6 @@ public final class AirportSecuritySystemEvents {
                         "CLEAN",
                         Set.of()
                 );
-                AdminNotesIntegration.recordCheckResult(session.player.getUUID(), Set.of());
                 // Clean checks are only logged/returned to the command sender; they are not broadcast.
                 if (session.commandSource != null) {
                     DiscordWebhook.send(
