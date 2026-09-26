@@ -2,6 +2,7 @@ package com.zaremate.airport_security_system;
 
 import com.mojang.logging.LogUtils;
 import net.minecraft.commands.Commands;
+import com.mojang.brigadier.arguments.StringArgumentType;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.protocol.game.ClientboundBlockEntityDataPacket;
@@ -40,20 +41,20 @@ public final class AirportSecuritySystemEvents {
     public static void onCommands(RegisterCommandsEvent event) {
         var command = Commands.literal("airport_security_system")
                 .requires(source -> source.hasPermission(3) || LuckPermsPermissions.hasPermission(source, AirportSecuritySystemConfig.COMMAND_PERMISSION.get()))
-                .then(Commands.argument("player", net.minecraft.commands.arguments.StringArgumentType.word())
+                .then(Commands.argument("player", StringArgumentType.word())
                         .executes(ctx -> startCheckByIdentifier(
                                 ctx.getSource(),
-                                net.minecraft.commands.arguments.StringArgumentType.getString(ctx, "player")
+                                StringArgumentType.getString(ctx, "player")
                         )));
 
         event.getDispatcher().register(command);
         event.getDispatcher().register(
                 Commands.literal("ass")
                         .requires(source -> source.hasPermission(3) || LuckPermsPermissions.hasPermission(source, AirportSecuritySystemConfig.COMMAND_PERMISSION.get()))
-                        .then(Commands.argument("player", net.minecraft.commands.arguments.StringArgumentType.word())
+                        .then(Commands.argument("player", StringArgumentType.word())
                                 .executes(ctx -> startCheckByIdentifier(
                                         ctx.getSource(),
-                                        net.minecraft.commands.arguments.StringArgumentType.getString(ctx, "player")
+                                        StringArgumentType.getString(ctx, "player")
                                 )))
         );
     }
