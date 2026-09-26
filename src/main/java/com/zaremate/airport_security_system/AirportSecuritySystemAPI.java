@@ -52,19 +52,7 @@ public final class AirportSecuritySystemAPI {
     }
 
     private static Map<UUID, AirportSecuritySystemOffenses.PlayerRecord> collectPlayers() {
-        Map<UUID, AirportSecuritySystemOffenses.PlayerRecord> result =
-                new LinkedHashMap<>();
-
-        List<AirportSecuritySystemOffenses.PlayerRecord> records =
-                AirportSecuritySystemOffenses.getPlayers();
-        List<UUID> uuids = AirportSecuritySystemOffenses.getPlayerUuids();
-
-        int count = Math.min(uuids.size(), records.size());
-        for (int i = 0; i < count; i++) {
-            result.put(uuids.get(i), records.get(i));
-        }
-
-        return result;
+        return AirportSecuritySystemOffenses.getPlayerRecords();
     }
 
     private static PlayerOffense toApiRecord(
