@@ -141,6 +141,11 @@ public final class AirportSecuritySystemOffenses {
         return record == null ? null : record.copy();
     }
 
+    static synchronized List<UUID> getPlayerUuids() {
+        ensureInitialized();
+        return List.copyOf(PLAYERS.keySet());
+    }
+
     public static synchronized List<PlayerRecord> getPlayers() {
         ensureInitialized();
 
