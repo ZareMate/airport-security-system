@@ -193,7 +193,7 @@ public final class AirportSecuritySystemEvents {
                         + percent(finalClearedPlayers, finalTotalPlayers) + "%)"
         ).withColor(0x55FF55), false);
         source.sendSuccess(() -> Component.literal(
-                "Detected: " + finalDetectedPlayers + " ("
+                "Detected: " + finalDetectedPlayers + "/" + finalTotalPlayers + " ("
                         + percent(finalDetectedPlayers, finalTotalPlayers) + "%)"
         ).withColor(0xFF5555), false);
 
