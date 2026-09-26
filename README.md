@@ -38,11 +38,13 @@ When the optional [Admin Notes](https://github.com/ZareMate/admin-notes) integra
 /offense_rate
 ```
 
-`/offenses <player>` shows only Airport Security System detection categories and their last-detected dates. The player can be specified by name or UUID.
+`/offenses <player>` reads the ASS offense database and shows only Airport Security System detection categories and their last-detected dates. The player can be specified by name or UUID, including offline players that have a stored ASS record.
 
-The ASS persistent timeline is the source of truth. It keeps one system note per player with category-specific last-detected dates and an optional `cleared` date. Inconclusive checks do not modify that timeline.
+ASS stores its offense data in `airport_security_system_offenses.json` in the world directory. This database is the authoritative source for `/offenses` and `/offense_rate` and is independent of Admin Notes.
 
-`/offense_rate` reports the current ASS state distribution for online players represented in Admin Notes. It does not count individual historical checks, because the persistent timeline stores last-known detection/clear dates rather than every check event.
+Each player record keeps the persistent offense timeline plus check statistics. DETECTED updates the relevant category dates and clears the current `cleared` state. CLEAN refreshes `cleared` without deleting detection history. INCONCLUSIVE increments the check counter but does not modify the offense timeline.
+
+`/offense_rate` uses the ASS database directly and reports current cleared-vs-detected player percentages, total recorded checks, check result percentages, and the distribution of detected categories.
 
 ## LuckPerms
 
@@ -138,7 +140,7 @@ Clean results are not broadcast.
 
 Airport Security System has optional support for the [Admin Notes](https://github.com/ZareMate/admin-notes) mod (version 2.0.0 or newer).
 
-When Admin Notes is installed, completed security checks automatically maintain **one system note per player**.
+When Admin Notes is installed, completed security checks can additionally maintain **one mirrored system note per player**.
 
 The note keeps a persistent detection history. Each detected category has its own last-detected date:
 
