@@ -111,22 +111,35 @@ public final class AirportSecuritySystemEvents {
                 "UUID: " + playerUuid
         ).withColor(0x777777), false);
 
-        Map<String, String> detections = record.getDetectionDates();
+        String status = record.getStatus();
 
-        if (detections.isEmpty()) {
-            source.sendSuccess(() -> Component.literal(
-                    "No Airport Security System detections recorded."
-            ), false);
-        } else {
-            for (Map.Entry<String, String> entry : detections.entrySet()) {
+        if ("DETECTED".equals(status)) {
+            Map<String, String> detections = record.getDetectionDates();
+
+            if (detections.isEmpty()) {
                 source.sendSuccess(() -> Component.literal(
-                        entry.getKey() + " detected (last: " + entry.getValue() + ")"
+                        "Detected, but no categorized offenses are stored."
                 ).withColor(0xFF5555), false);
+            } else {
+                for (Map.Entry<String, String> entry : detections.entrySet()) {
+                    source.sendSuccess(() -> Component.literal(
+                            entry.getKey() + " detected (last: " + entry.getValue() + ")"
+                    ).withColor(0xFF5555), false);
+                }
             }
+        } else if ("CLEAN".equals(status)) {
+            String clearedDate = record.getClearedDate();
+            source.sendSuccess(() -> Component.literal(
+                    "CLEARED (last: " + (clearedDate == null ? "Unknown" : clearedDate) + ")"
+            ).withColor(0x55FF55), false);
+        } else {
+            source.sendSuccess(() -> Component.literal(
+                    "No current offense state recorded."
+            ), false);
         }
 
         source.sendSuccess(() -> Component.literal(
-                "Current status: " + record.getStatus()
+                "Current status: " + status
         ), false);
         source.sendSuccess(() -> Component.literal(
                 "───────────────────────────────────"
@@ -141,27 +154,23 @@ public final class AirportSecuritySystemEvents {
         int totalPlayers = players.size();
         int clearedPlayers = 0;
         int detectedPlayers = 0;
-        long totalChecks = 0;
-        long cleanChecks = 0;
-        long detectedChecks = 0;
-        long inconclusiveChecks = 0;
-        Map<String, Long> categoryCounts =
+
+        // Current-state distribution: each player contributes at most once to
+        // each currently detected category. Historical scans do not stack here.
+        Map<String, Long> currentCategoryCounts =
                 new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
 
         for (AirportSecuritySystemOffenses.PlayerRecord record : players) {
-            totalChecks += record.getTotalChecks();
-            cleanChecks += record.getCleanChecks();
-            detectedChecks += record.getDetectedChecks();
-            inconclusiveChecks += record.getInconclusiveChecks();
+            String status = record.getStatus();
 
-            if ("CLEAN".equals(record.getStatus())) {
+            if ("CLEAN".equals(status)) {
                 clearedPlayers++;
-            } else if ("DETECTED".equals(record.getStatus())) {
+            } else if ("DETECTED".equals(status)) {
                 detectedPlayers++;
-            }
 
-            for (Map.Entry<String, Long> entry : record.getDetectionCounts().entrySet()) {
-                categoryCounts.merge(entry.getKey(), entry.getValue(), Long::sum);
+                for (String category : record.getDetectionDates().keySet()) {
+                    currentCategoryCounts.merge(category, 1L, Long::sum);
+                }
             }
         }
 
@@ -175,15 +184,6 @@ public final class AirportSecuritySystemEvents {
         final int finalTotalPlayers = totalPlayers;
         final int finalClearedPlayers = clearedPlayers;
         final int finalDetectedPlayers = detectedPlayers;
-        final long finalTotalChecks = totalChecks;
-        final long finalCleanChecks = cleanChecks;
-        final long finalDetectedChecks = detectedChecks;
-        final long finalInconclusiveChecks = inconclusiveChecks;
-        long totalCategoryDetections = 0;
-        for (long count : categoryCounts.values()) {
-            totalCategoryDetections += count;
-        }
-        final long finalTotalCategoryDetections = totalCategoryDetections;
 
         source.sendSuccess(() -> Component.literal(
                 "Players with ASS records: " + finalTotalPlayers
@@ -191,49 +191,35 @@ public final class AirportSecuritySystemEvents {
         source.sendSuccess(() -> Component.literal(
                 "Cleared: " + finalClearedPlayers + " ("
                         + percent(finalClearedPlayers, finalTotalPlayers) + "%)"
-        ), false);
+        ).withColor(0x55FF55), false);
         source.sendSuccess(() -> Component.literal(
                 "Detected: " + finalDetectedPlayers + " ("
                         + percent(finalDetectedPlayers, finalTotalPlayers) + "%)"
-        ), false);
+        ).withColor(0xFF5555), false);
 
         source.sendSuccess(() -> Component.literal(""), false);
         source.sendSuccess(() -> Component.literal(
-                "Recorded checks:"
-        ), false);
-        source.sendSuccess(() -> Component.literal(
-                "Total: " + finalTotalChecks
-        ), false);
-        source.sendSuccess(() -> Component.literal(
-                "Cleared: " + finalCleanChecks + " ("
-                        + percent(finalCleanChecks, finalTotalChecks) + "%)"
-        ), false);
-        source.sendSuccess(() -> Component.literal(
-                "Detected: " + finalDetectedChecks + " ("
-                        + percent(finalDetectedChecks, finalTotalChecks) + "%)"
-        ), false);
-        source.sendSuccess(() -> Component.literal(
-                "Inconclusive: " + finalInconclusiveChecks + " ("
-                        + percent(finalInconclusiveChecks, finalTotalChecks) + "%)"
+                "Current cheat type distribution:"
         ), false);
 
-        source.sendSuccess(() -> Component.literal(""), false);
-        source.sendSuccess(() -> Component.literal(
-                "Cheat type distribution:"
-        ), false);
+        long totalCurrentCategoryDetections = 0;
+        for (long count : currentCategoryCounts.values()) {
+            totalCurrentCategoryDetections += count;
+        }
+        final long finalTotalCurrentCategoryDetections = totalCurrentCategoryDetections;
 
-        if (categoryCounts.isEmpty()) {
+        if (currentCategoryCounts.isEmpty()) {
             source.sendSuccess(() -> Component.literal(
-                    "No detections recorded."
+                    "No players are currently detected."
             ), false);
         } else {
-            for (Map.Entry<String, Long> entry : categoryCounts.entrySet()) {
+            for (Map.Entry<String, Long> entry : currentCategoryCounts.entrySet()) {
                 long count = entry.getValue();
                 source.sendSuccess(() -> Component.literal(
                         entry.getKey() + ": " + count
-                                + " detection(s) — "
-                                + percent(count, finalTotalCategoryDetections)
-                                + "% of category detections"
+                                + " player(s) — "
+                                + percent(count, finalTotalCurrentCategoryDetections)
+                                + "% of current detections"
                 ).withColor(0xFF5555), false);
             }
         }
