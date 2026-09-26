@@ -227,7 +227,7 @@ public final class AirportSecuritySystemEvents {
                 source.sendSuccess(() -> Component.literal(
                         entry.getKey() + ": " + count
                                 + " detection(s) — "
-                                + percent(count, detectedChecks)
+                                + percent(count, finalDetectedChecks)
                                 + "% of detected checks"
                 ).withColor(0xFF5555), false);
             }
@@ -237,10 +237,6 @@ public final class AirportSecuritySystemEvents {
                 "───────────────────────────────────"
         ).withColor(0x555555), false);
         return 1;
-    }
-
-    private static String playerNameFallback(ServerPlayer player) {
-        return player.getGameProfile().getName();
     }
 
     private static long percent(long value, long total) {
