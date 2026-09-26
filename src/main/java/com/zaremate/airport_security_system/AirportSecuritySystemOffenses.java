@@ -29,8 +29,9 @@ import java.util.UUID;
  * Persistent Airport Security System offense storage.
  *
  * <p>This is the authoritative data source for {@code /offenses} and
- * {@code /offense_rate}. Admin Notes integration may mirror the timeline,
- * but ASS commands never depend on Admin Notes.</p>
+ * {@code /offense_rate}. Admin Notes may read this data through
+ * {@code AirportSecuritySystemAPI}, but ASS never depends on Admin Notes
+ * during normal operation.</p>
  */
 public final class AirportSecuritySystemOffenses {
     private static final Gson GSON = new GsonBuilder()
