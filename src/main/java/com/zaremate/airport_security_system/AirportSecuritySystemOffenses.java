@@ -205,64 +205,69 @@ public final class AirportSecuritySystemOffenses {
             return;
         }
 
-        if (Files.notExists(dataFile)) {
-            save();
-            migrateFromAdminNotes();
-            return;
-        }
+        if (Files.exists(dataFile)) {
+            try {
+                String json = Files.readString(dataFile, StandardCharsets.UTF_8);
+                JsonObject root = JsonParser.parseString(json).getAsJsonObject();
 
-        try {
-            String json = Files.readString(dataFile, StandardCharsets.UTF_8);
-            JsonObject root = JsonParser.parseString(json).getAsJsonObject();
+                JsonElement playersElement = root.get("players");
+                if (playersElement != null && playersElement.isJsonObject()) {
+                    for (Map.Entry<String, JsonElement> entry :
+                            playersElement.getAsJsonObject().entrySet()) {
+                        try {
+                            UUID uuid = UUID.fromString(entry.getKey());
+                            PlayerRecord record = GSON.fromJson(
+                                    entry.getValue(),
+                                    PlayerRecord.class
+                            );
 
-            JsonElement playersElement = root.get("players");
-            if (playersElement == null || !playersElement.isJsonObject()) {
-                return;
-            }
-
-            for (Map.Entry<String, JsonElement> entry :
-                    playersElement.getAsJsonObject().entrySet()) {
-                try {
-                    UUID uuid = UUID.fromString(entry.getKey());
-                    PlayerRecord record = GSON.fromJson(
-                            entry.getValue(),
-                            PlayerRecord.class
-                    );
-
-                    if (record != null) {
-                        record.normalize();
-                        PLAYERS.put(uuid, record);
+                            if (record != null) {
+                                record.normalize();
+                                PLAYERS.put(uuid, record);
+                            }
+                        } catch (Exception ex) {
+                            AirportSecuritySystem.LOGGER.warn(
+                                    "[Airport Security System] Skipping malformed offense record for '{}'.",
+                                    entry.getKey(),
+                                    ex
+                            );
+                        }
                     }
-                } catch (Exception ex) {
-                    AirportSecuritySystem.LOGGER.warn(
-                            "[Airport Security System] Skipping malformed offense record for '{}'.",
-                            entry.getKey(),
-                            ex
-                    );
                 }
+            } catch (Exception ex) {
+                AirportSecuritySystem.LOGGER.error(
+                        "[Airport Security System] Failed to load offense storage.",
+                        ex
+                );
             }
-
-            save();
-        } catch (Exception ex) {
-            AirportSecuritySystem.LOGGER.error(
-                    "[Airport Security System] Failed to load offense storage.",
-                    ex
-            );
         }
+
+        // Migrate whenever the ASS-owned store is empty, including an
+        // existing empty JSON file.
+        if (PLAYERS.isEmpty()) {
+            migrateFromAdminNotes();
+        }
+
+        save();
     }
 
     /**
-     * One-time migration of the existing ASS timeline from Admin Notes.
-     *
-     * <p>The new offense database remains authoritative after migration.
-     * Existing timeline dates are imported so upgrading does not erase the
-     * user's current ASS offense state.</p>
+     * Migrates legacy ASS offense data from Admin Notes when the ASS database
+     * is empty, then removes the old ASS cheat/history notes.
      */
     private static void migrateFromAdminNotes() {
         try {
-            Class<?> apiClass = Class.forName("com.zaremate.admin_notes.AdminNotesAPI");
-            java.lang.reflect.Method getPlayers = apiClass.getMethod("getPlayers");
-            java.lang.reflect.Method getNotes = apiClass.getMethod("getNotes", UUID.class);
+            Class<?> apiClass =
+                    Class.forName("com.zaremate.admin_notes.AdminNotesAPI");
+
+            java.lang.reflect.Method getPlayers =
+                    apiClass.getMethod("getPlayers");
+            java.lang.reflect.Method getNotes =
+                    apiClass.getMethod("getNotes", UUID.class);
+            java.lang.reflect.Method removeNote =
+                    apiClass.getMethod("removeNote", UUID.class, UUID.class);
+            java.lang.reflect.Method getPlayerName =
+                    apiClass.getMethod("getPlayerName", UUID.class);
 
             @SuppressWarnings("unchecked")
             List<UUID> uuids = (List<UUID>) getPlayers.invoke(null);
@@ -274,90 +279,193 @@ public final class AirportSecuritySystemOffenses {
                 List<Object> notes = (List<Object>) getNotes.invoke(null, uuid);
 
                 PlayerRecord record = new PlayerRecord();
-                boolean assNoteFound = false;
+                List<UUID> legacyNoteIds = new ArrayList<>();
+                boolean assDataFound = false;
 
                 for (Object note : notes) {
-                    java.lang.reflect.Method isSystem = note.getClass().getMethod("isSystem");
-                    if (!Boolean.TRUE.equals(isSystem.invoke(note))) {
+                    if (!Boolean.TRUE.equals(
+                            note.getClass().getMethod("isSystem").invoke(note))) {
                         continue;
                     }
 
-                    String text = (String) note.getClass().getMethod("text").invoke(note);
+                    String text =
+                            (String) note.getClass().getMethod("text").invoke(note);
+
+                    if (!isLegacyAssNote(text)) {
+                        continue;
+                    }
+
+                    UUID noteId =
+                            (UUID) note.getClass().getMethod("id").invoke(note);
+                    if (noteId != null) {
+                        legacyNoteIds.add(noteId);
+                    }
+
                     if (text == null || text.isBlank()) {
                         continue;
                     }
 
+                    assDataFound = true;
                     String normalized = text.replace("\\n", "\n");
-                    if (!normalized.toLowerCase(Locale.ROOT).contains(" detected")
-                            && !normalized.toLowerCase(Locale.ROOT).contains("cleared (last:")) {
-                        continue;
-                    }
-
-                    assNoteFound = true;
 
                     for (String line : normalized.split("\\R")) {
                         String value = line.trim();
-                        String lower = value.toLowerCase(Locale.ROOT);
 
-                        if (lower.startsWith("cleared (last:")) {
-                            String date = parseTimelineDate(value);
-                            if (date != null) {
-                                record.clearedDate = laterDate(record.clearedDate, date);
-                            }
-                            continue;
-                        }
-
-                        int detected = lower.indexOf(" detected");
-                        if (detected <= 0) {
-                            continue;
-                        }
-
-                        String category = value.substring(0, detected).trim();
-                        String date = parseTimelineDate(value);
-                        if (!category.isBlank() && date != null) {
-                            record.detectionDates.put(
-                                    category,
-                                    laterDate(record.detectionDates.get(category), date)
-                            );
+                        if (value.regionMatches(
+                                true,
+                                0,
+                                "ASS_CHECK|",
+                                0,
+                                "ASS_CHECK|".length())) {
+                            migrateHistoryLine(record, value);
+                        } else {
+                            migrateTimelineLine(record, value);
                         }
                     }
                 }
 
-                if (!assNoteFound) {
+                if (!assDataFound) {
                     continue;
                 }
 
-                Object storedName = null;
+                String name = uuid.toString();
                 try {
-                    storedName = apiClass.getMethod("getPlayerName", UUID.class).invoke(null, uuid);
+                    Object value = getPlayerName.invoke(null, uuid);
+                    if (value instanceof java.util.Optional<?> optional
+                            && optional.isPresent()
+                            && optional.get() instanceof String storedName
+                            && !storedName.isBlank()) {
+                        name = storedName;
+                    }
                 } catch (Throwable ignored) {
                 }
 
-                if (storedName instanceof java.util.Optional<?> optional
-                        && optional.isPresent()
-                        && optional.get() instanceof String name) {
-                    record.name = name;
-                } else {
-                    record.name = uuid.toString();
-                }
-
+                record.name = name;
                 record.normalize();
+
                 PLAYERS.put(uuid, record);
                 changed = true;
+
+                // Only delete notes after their data has been successfully
+                // extracted into ASS-owned storage.
+                for (UUID noteId : legacyNoteIds) {
+                    try {
+                        removeNote.invoke(null, uuid, noteId);
+                    } catch (Throwable ex) {
+                        AirportSecuritySystem.LOGGER.warn(
+                                "[Airport Security System] Failed to remove migrated legacy ASS note {} for {}.",
+                                noteId,
+                                uuid,
+                                ex
+                        );
+                    }
+                }
             }
 
             if (changed) {
-                save();
                 AirportSecuritySystem.LOGGER.info(
-                        "[Airport Security System] Migrated existing ASS offense timelines from Admin Notes."
+                        "[Airport Security System] Migrated ASS offense data from Admin Notes and removed legacy ASS notes."
                 );
             }
         } catch (ClassNotFoundException ignored) {
             // Admin Notes is optional.
         } catch (Throwable ex) {
             AirportSecuritySystem.LOGGER.warn(
-                    "[Airport Security System] Failed to migrate ASS offense timelines from Admin Notes.",
+                    "[Airport Security System] Failed to migrate ASS offense data from Admin Notes.",
                     ex
+            );
+        }
+    }
+
+    private static boolean isLegacyAssNote(String text) {
+        if (text == null || text.isBlank()) {
+            return false;
+        }
+
+        String normalized = text.trim().toLowerCase(Locale.ROOT);
+
+        if (normalized.startsWith("ass_check|")) {
+            return true;
+        }
+
+        for (String line : normalized.split("\\R")) {
+            if (line.contains(" detected (last:")) {
+                return true;
+            }
+
+            if (line.startsWith("cleared (last:")) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static void migrateHistoryLine(PlayerRecord record, String line) {
+        String[] parts = line.split("\\|", -1);
+        if (parts.length < 2) {
+            return;
+        }
+
+        String status = parts[1].trim().toUpperCase(Locale.ROOT);
+        String date = parts.length > 2 ? parts[2].trim() : null;
+
+        record.totalChecks++;
+
+        switch (status) {
+            case "CLEAN" -> {
+                record.cleanChecks++;
+                record.clearedDate = laterDate(record.clearedDate, date);
+            }
+
+            case "DETECTED" -> {
+                record.detectedChecks++;
+
+                for (int i = 3; i < parts.length; i++) {
+                    String category = parts[i].trim();
+                    if (category.isBlank()) {
+                        continue;
+                    }
+
+                    record.detectionDates.put(
+                            category,
+                            laterDate(record.detectionDates.get(category), date)
+                    );
+                    record.detectionCounts.merge(
+                            category,
+                            1L,
+                            Long::sum
+                    );
+                }
+            }
+
+            default -> record.inconclusiveChecks++;
+        }
+    }
+
+    private static void migrateTimelineLine(PlayerRecord record, String line) {
+        String lower = line.toLowerCase(Locale.ROOT);
+
+        if (lower.startsWith("cleared (last:")) {
+            record.clearedDate = laterDate(
+                    record.clearedDate,
+                    parseTimelineDate(line)
+            );
+            return;
+        }
+
+        int detected = lower.indexOf(" detected");
+        if (detected <= 0) {
+            return;
+        }
+
+        String category = line.substring(0, detected).trim();
+        String date = parseTimelineDate(line);
+
+        if (!category.isBlank() && date != null) {
+            record.detectionDates.put(
+                    category,
+                    laterDate(record.detectionDates.get(category), date)
             );
         }
     }
