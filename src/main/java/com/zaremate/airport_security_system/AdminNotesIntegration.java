@@ -37,78 +37,6 @@ public final class AdminNotesIntegration {
 
     private AdminNotesIntegration() {}
 
-    /**
-     * Updates the player's Admin Notes after a completed security check.
-     *
-     * <p>Airport Security System keeps exactly one system note per player for
-     * its detection history. Multiple detections are stored together:</p>
-     *
-     * <pre>
-     * x-ray detected
-     * freecam detected
-     * (last: 26-09-2026)
-     * </pre>
-     *
-     * <p>A clean check uses the same single system note:</p>
-     *
-     * <pre>cleared (last: 26-09-2026)</pre>
-     *
-     * <p>Existing manually authored Admin Notes are never changed.</p>
-     */
-    /**
-     * Returns the current Airport Security System offense state for a player.
-     * The returned map contains normalized detection categories. A null map
-     * means the player has no ASS system note or the integration is unavailable.
-     */
-    public static Map<String, Object> getPlayerOffenseState(UUID playerUuid) {
-        if (playerUuid == null || !initialize()) {
-            return null;
-        }
-
-        try {
-            @SuppressWarnings("unchecked")
-            List<Object> notes = (List<Object>) getNotesMethod.invoke(null, playerUuid);
-
-            LinkedHashMap<String, String> detections = new LinkedHashMap<>();
-            String clearedDate = null;
-
-            for (Object note : findAssSystemNotes(notes)) {
-                String text = noteText(note);
-                mergeDetectionDates(detections, parseDetectionDates(text));
-                String date = parseClearedDate(text);
-                if (isLaterDate(date, clearedDate)) {
-                    clearedDate = date;
-                }
-            }
-
-            if (clearedDate != null) {
-                return Map.of(
-                        "status", "CLEAN",
-                        "categories", detections.keySet(),
-                        "last", clearedDate
-                );
-            }
-
-            if (!detections.isEmpty()) {
-                String latestDate = latestDetectionDate(detections);
-                return Map.of(
-                        "status", "DETECTED",
-                        "categories", detections.keySet(),
-                        "last", latestDate == null ? "Unknown" : latestDate
-                );
-            }
-
-            return null;
-        } catch (Throwable ex) {
-            AirportSecuritySystem.LOGGER.debug(
-                    "[Airport Security System] Failed to read Admin Notes offense state for {}.",
-                    playerUuid,
-                    unwrap(ex)
-            );
-            return null;
-        }
-    }
-
     public static void recordCheckResult(UUID playerUuid, Set<String> detectedKeys) {
         if (playerUuid == null || !initialize()) {
             return;
@@ -303,32 +231,6 @@ public final class AdminNotesIntegration {
         return result;
     }
 
-    private static List<Object> findDetectionNotes(List<Object> notes)
-            throws ReflectiveOperationException {
-        List<Object> result = new ArrayList<>();
-
-        for (Object note : findAssSystemNotes(notes)) {
-            if (!parseDetectionDates(noteText(note)).isEmpty()) {
-                result.add(note);
-            }
-        }
-
-        return result;
-    }
-
-    private static List<Object> findClearedNotes(List<Object> notes)
-            throws ReflectiveOperationException {
-        List<Object> result = new ArrayList<>();
-
-        for (Object note : findAssSystemNotes(notes)) {
-            if (parseClearedDate(noteText(note)) != null) {
-                result.add(note);
-            }
-        }
-
-        return result;
-    }
-
     private static boolean isAirportSecuritySystemNote(String text) {
         if (text == null || text.isBlank()) {
             return false;
@@ -380,28 +282,6 @@ public final class AdminNotesIntegration {
         return result;
     }
 
-    private static String parseClearedDate(String text) {
-        if (text == null) {
-            return null;
-        }
-
-        for (String line : text.split("\\R")) {
-            String value = line.trim();
-
-            if (value.regionMatches(
-                    true,
-                    0,
-                    "cleared (last:",
-                    0,
-                    "cleared (last:".length()
-            )) {
-                return parseLatestDate(value);
-            }
-        }
-
-        return null;
-    }
-
     private static void mergeDetectionDates(
             Map<String, String> target,
             Map<String, String> source
@@ -412,18 +292,6 @@ public final class AdminNotesIntegration {
                 target.put(entry.getKey(), entry.getValue());
             }
         }
-    }
-
-    private static String latestDetectionDate(Map<String, String> detections) {
-        String latest = null;
-
-        for (String date : detections.values()) {
-            if (isLaterDate(date, latest)) {
-                latest = date;
-            }
-        }
-
-        return latest;
     }
 
     private static boolean isLaterDate(String candidate, String current) {
@@ -498,16 +366,6 @@ public final class AdminNotesIntegration {
         return date.isBlank() ? null : date;
     }
 
-    private static boolean isClearedNote(String text) {
-        return text != null && text.regionMatches(
-                true,
-                0,
-                "cleared (last:",
-                0,
-                "cleared (last:".length()
-        );
-    }
-
     private static boolean isSystemNote(Object note)
             throws ReflectiveOperationException {
         Method method = note.getClass().getMethod("isSystem");
@@ -525,10 +383,6 @@ public final class AdminNotesIntegration {
         Method method = note.getClass().getMethod("text");
         Object value = method.invoke(note);
         return value instanceof String text ? text : null;
-    }
-
-    private static String clearedNote(String date) {
-        return "cleared (last: " + date + ")";
     }
 
     private static String detectionCategory(String key) {
@@ -610,165 +464,6 @@ public final class AdminNotesIntegration {
         }
 
         return cleaned.trim();
-    }
-
-    public static int showOffenses(net.minecraft.commands.CommandSourceStack source, String identifier) {
-        UUID playerUuid = resolvePlayerUuid(source, identifier);
-        if (playerUuid == null) {
-            source.sendFailure(net.minecraft.network.chat.Component.literal("Player not found: " + identifier));
-            return 0;
-        }
-
-        try {
-            @SuppressWarnings("unchecked")
-            List<Object> notes = (List<Object>) getNotesMethod.invoke(null, playerUuid);
-            LinkedHashMap<String, String> offenses = new LinkedHashMap<>();
-            for (Object note : findAssSystemNotes(notes)) {
-                mergeDetectionDates(offenses, parseDetectionDates(noteText(note)));
-            }
-
-            source.sendSuccess(() -> net.minecraft.network.chat.Component.literal("PLAYER OFFENSES").withStyle(s -> s.withColor(0xFFAA00).withBold(true)), false);
-            source.sendSuccess(() -> net.minecraft.network.chat.Component.literal("Player: " + playerName(source, playerUuid)), false);
-            source.sendSuccess(() -> net.minecraft.network.chat.Component.literal("UUID: " + playerUuid), false);
-
-            if (offenses.isEmpty()) {
-                source.sendSuccess(() -> net.minecraft.network.chat.Component.literal("No Airport Security System detections recorded."), false);
-            } else {
-                for (Map.Entry<String, String> entry : offenses.entrySet()) {
-                    source.sendSuccess(() -> net.minecraft.network.chat.Component.literal(
-                            entry.getKey() + " detected (last: " + (entry.getValue() == null ? "Unknown" : entry.getValue()) + ")"
-                    ).withColor(0xFF5555), false);
-                }
-            }
-            return 1;
-        } catch (Throwable ex) {
-            AirportSecuritySystem.LOGGER.warn("[Airport Security System] Failed to read offenses for {}.", playerUuid, unwrap(ex));
-            source.sendFailure(net.minecraft.network.chat.Component.literal("Failed to read Airport Security System offenses."));
-            return 0;
-        }
-    }
-
-    public static int showOffenseRate(net.minecraft.commands.CommandSourceStack source) {
-        if (!initialize()) {
-            source.sendFailure(net.minecraft.network.chat.Component.literal(
-                    "Admin Notes integration is unavailable."));
-            return 0;
-        }
-
-        try {
-            @SuppressWarnings("unchecked")
-            List<UUID> playerUuids = (List<UUID>) getPlayersMethod.invoke(null);
-
-            int totalPlayers = 0;
-            int clearedPlayers = 0;
-            int detectedPlayers = 0;
-            Map<String, Integer> categoryCounts =
-                    new java.util.TreeMap<>(String.CASE_INSENSITIVE_ORDER);
-
-            for (UUID uuid : playerUuids) {
-                Map<String, Object> state = getPlayerOffenseState(uuid);
-                if (state == null) continue;
-
-                totalPlayers++;
-                if ("CLEAN".equals(state.get("status"))) {
-                    clearedPlayers++;
-                } else if ("DETECTED".equals(state.get("status"))) {
-                    detectedPlayers++;
-
-                    Object categories = state.get("categories");
-                    if (categories instanceof Set<?> set) {
-                        for (Object category : set) {
-                            if (category instanceof String value && !value.isBlank()) {
-                                categoryCounts.merge(value, 1, Integer::sum);
-                            }
-                        }
-                    }
-                }
-            }
-
-            source.sendSuccess(() -> net.minecraft.network.chat.Component.literal(
-                    "───────────────────────────────────").withColor(0x555555), false);
-            source.sendSuccess(() -> net.minecraft.network.chat.Component.literal(
-                    "AIRPORT SECURITY OFFENSE RATE")
-                    .withStyle(st -> st.withColor(0xFFAA00).withBold(true)), false);
-            source.sendSuccess(() -> net.minecraft.network.chat.Component.literal(
-                    "Players with ASS records: " + totalPlayers), false);
-            source.sendSuccess(() -> net.minecraft.network.chat.Component.literal(
-                    "Cleared: " + clearedPlayers + " (" + percent(clearedPlayers, totalPlayers) + "%)"), false);
-            source.sendSuccess(() -> net.minecraft.network.chat.Component.literal(
-                    "Detected: " + detectedPlayers + " (" + percent(detectedPlayers, totalPlayers) + "%)"), false);
-
-            source.sendSuccess(() -> net.minecraft.network.chat.Component.literal(""), false);
-            source.sendSuccess(() -> net.minecraft.network.chat.Component.literal(
-                    "Cheat type distribution among detected players:"), false);
-
-            if (categoryCounts.isEmpty()) {
-                source.sendSuccess(() -> net.minecraft.network.chat.Component.literal(
-                        "No current detections recorded."), false);
-            } else {
-                for (Map.Entry<String, Integer> entry : categoryCounts.entrySet()) {
-                    int count = entry.getValue();
-                    source.sendSuccess(() -> net.minecraft.network.chat.Component.literal(
-                            entry.getKey() + ": " + count + " player(s) — "
-                                    + percent(count, detectedPlayers)
-                                    + "% of detected players"
-                    ).withColor(0xFF5555), false);
-                }
-            }
-
-            source.sendSuccess(() -> net.minecraft.network.chat.Component.literal(
-                    "───────────────────────────────────").withColor(0x555555), false);
-            return 1;
-        } catch (Throwable ex) {
-            AirportSecuritySystem.LOGGER.warn(
-                    "[Airport Security System] Failed to calculate offense rate.",
-                    unwrap(ex));
-            source.sendFailure(net.minecraft.network.chat.Component.literal(
-                    "Failed to read Airport Security System offense statistics."));
-            return 0;
-        }
-    }
-
-    private static UUID resolvePlayerUuid(net.minecraft.commands.CommandSourceStack source, String identifier) {
-        if (identifier == null || identifier.isBlank()) return null;
-        try {
-            return UUID.fromString(identifier);
-        } catch (IllegalArgumentException ignored) {
-        }
-        var server = source.getServer();
-        if (server == null) return null;
-        ServerPlayer online = server.getPlayerList().getPlayerByName(identifier);
-        if (online != null) return online.getUUID();
-        var cache = server.getProfileCache();
-        if (cache != null) {
-            try {
-                var profile = cache.get(identifier);
-                if (profile.isPresent()) return profile.get().getId();
-            } catch (Throwable ignored) {
-            }
-        }
-        return null;
-    }
-
-    private static String playerName(net.minecraft.commands.CommandSourceStack source, UUID uuid) {
-        var server = source.getServer();
-        if (server != null) {
-            ServerPlayer online = server.getPlayerList().getPlayer(uuid);
-            if (online != null) return online.getGameProfile().getName();
-            var cache = server.getProfileCache();
-            if (cache != null) {
-                try {
-                    var profile = cache.get(uuid);
-                    if (profile.isPresent()) return profile.get().getName();
-                } catch (Throwable ignored) {
-                }
-            }
-        }
-        return uuid.toString();
-    }
-
-    private static int percent(int value, int total) {
-        return total <= 0 ? 0 : Math.round((value * 1000f) / total) / 10;
     }
 
     private static Throwable unwrap(Throwable throwable) {
