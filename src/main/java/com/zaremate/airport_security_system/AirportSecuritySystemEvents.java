@@ -57,6 +57,26 @@ public final class AirportSecuritySystemEvents {
                                         StringArgumentType.getString(ctx, "player")
                                 )))
         );
+        registerOffenseCommands(event);
+    }
+
+    private static void registerOffenseCommands(RegisterCommandsEvent event) {
+        event.getDispatcher().register(
+                Commands.literal("offenses")
+                        .requires(source -> source.hasPermission(3)
+                                || LuckPermsPermissions.hasPermission(source, AirportSecuritySystemConfig.COMMAND_PERMISSION.get()))
+                        .then(Commands.argument("player", StringArgumentType.word())
+                                .executes(ctx -> AdminNotesIntegration.showOffenses(
+                                        ctx.getSource(),
+                                        StringArgumentType.getString(ctx, "player"))))
+        );
+
+        event.getDispatcher().register(
+                Commands.literal("offense_rate")
+                        .requires(source -> source.hasPermission(3)
+                                || LuckPermsPermissions.hasPermission(source, AirportSecuritySystemConfig.COMMAND_PERMISSION.get()))
+                        .executes(ctx -> AdminNotesIntegration.showOffenseRate(ctx.getSource()))
+        );
     }
 
     /**
@@ -439,7 +459,6 @@ public final class AirportSecuritySystemEvents {
                 );
                 sendCommandResult(session, "DETECTED", details.toString());
                 broadcastStaff(session, (session.commandSource != null ? "[MANUAL] " : "") + name + " — DETECTED\n" + details);
-                AdminNotesIntegration.recordCheckHistory(session.player.getUUID(), "DETECTED", session.detected);
                 AdminNotesIntegration.recordCheckResult(session.player.getUUID(), session.detected);
             } else if (!session.protectedKeys.isEmpty()) {
                 String list = String.join("\n", session.protectedKeys);
@@ -459,7 +478,6 @@ public final class AirportSecuritySystemEvents {
                     LOGGER.info("[Airport Security System] {}: no blacklisted keybinds detected.", name);
                 String details = "No configured blacklisted keybinds were resolved.";
                 sendCommandResult(session, "CLEAN", details);
-                AdminNotesIntegration.recordCheckHistory(session.player.getUUID(), "CLEAN", Set.of());
                 AdminNotesIntegration.recordCheckResult(session.player.getUUID(), Set.of());
                 // Clean checks are only logged/returned to the command sender; they are not broadcast.
                 if (session.commandSource != null) {
@@ -484,7 +502,6 @@ public final class AirportSecuritySystemEvents {
             );
             sendCommandResult(session, "INCONCLUSIVE", details);
             broadcastStaff(session, (session.commandSource != null ? "[MANUAL] " : "") + name + " — INCONCLUSIVE\n" + details);
-            AdminNotesIntegration.recordCheckHistory(session.player.getUUID(), "INCONCLUSIVE", Set.of());
         }
     }
 
