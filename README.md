@@ -155,7 +155,7 @@ Airport Security System has optional support for the [Admin Notes](https://githu
 
 When Admin Notes is installed, `/note <player>` can display the current ASS offense state as a live **`[ASS]` category**.
 
-The note keeps a persistent detection history. Each detected category has its own last-detected date:
+The live `[ASS]` section reads the persistent ASS offense database. Each detected category has its own last-detected date:
 
 ```
 x-ray detected (last: dd-mm-yyyy)
@@ -165,18 +165,18 @@ cleared (last: dd-mm-yyyy)
 
 The `cleared` line is the current clear state and is only present after a clean check.
 
-- All Airport Security System detections for a player use one system note.
-- Multiple detection categories are stored together in that note.
+- All Airport Security System detections for a player are stored in the ASS offense database.
+- Multiple detection categories are returned together by the ASS API.
 - When a category is detected again, only that category's date is updated.
 - Detection dates for categories not detected in the current check are preserved.
 - A clean check adds or updates the `cleared` line without deleting any detection history.
 - When a later check detects a cheat, the `cleared` line is removed and the detected category dates are updated.
 - Existing older per-category Airport Security System notes are automatically consolidated.
-- The `[ASS]` category is rendered by Admin Notes in gold and does not expose its internal note ID.
+- The `[ASS]` category is rendered by Admin Notes in gold and has no Admin Notes note ID because it is not stored there.
 - Existing manually authored Admin Notes are left unchanged.
 - Inconclusive checks do not change the persistent detection/clear history.
 
-The integration is optional and uses the Admin Notes API without requiring the Admin Notes mod to be installed.
+Admin Notes discovers the ASS API at runtime. ASS does not require Admin Notes for offense storage or the offense commands.
 
 ### Player lookup
 
