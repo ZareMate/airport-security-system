@@ -154,6 +154,7 @@ public final class AirportSecuritySystemEvents {
         int totalPlayers = players.size();
         int clearedPlayers = 0;
         int detectedPlayers = 0;
+        int everDetectedPlayers = 0;
 
         // Current-state distribution: each player contributes at most once to
         // each currently detected category. Historical scans do not stack here.
@@ -162,6 +163,10 @@ public final class AirportSecuritySystemEvents {
 
         for (AirportSecuritySystemOffenses.PlayerRecord record : players) {
             String status = record.getStatus();
+
+            if (record.getDetectedChecks() > 0) {
+                everDetectedPlayers++;
+            }
 
             if ("CLEAN".equals(status)) {
                 clearedPlayers++;
@@ -184,6 +189,7 @@ public final class AirportSecuritySystemEvents {
         final int finalTotalPlayers = totalPlayers;
         final int finalClearedPlayers = clearedPlayers;
         final int finalDetectedPlayers = detectedPlayers;
+        final int finalEverDetectedPlayers = everDetectedPlayers;
 
         source.sendSuccess(() -> Component.literal(
                 "Players with ASS records: " + finalTotalPlayers
@@ -193,9 +199,13 @@ public final class AirportSecuritySystemEvents {
                         + percent(finalClearedPlayers, finalTotalPlayers) + "%)"
         ).withColor(0x55FF55), false);
         source.sendSuccess(() -> Component.literal(
-                "Detected: " + finalDetectedPlayers + "/" + finalTotalPlayers + " ("
+                "Detected: " + finalDetectedPlayers + " ("
                         + percent(finalDetectedPlayers, finalTotalPlayers) + "%)"
         ).withColor(0xFF5555), false);
+        source.sendSuccess(() -> Component.literal(
+                "Detected total: " + finalEverDetectedPlayers + "/" + finalTotalPlayers + " ("
+                        + percent(finalEverDetectedPlayers, finalTotalPlayers) + "%)"
+        ).withColor(0xFFAA00), false);
 
         source.sendSuccess(() -> Component.literal(""), false);
         source.sendSuccess(() -> Component.literal(
