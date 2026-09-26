@@ -32,7 +32,6 @@ public final class AdminNotesIntegration {
     private static Method addSystemNoteMethod;
     private static Method editNoteMethod;
     private static Method removeNoteMethod;
-    private static Method addOffenseHistoryNoteMethod;
 
     private AdminNotesIntegration() {}
 
@@ -180,11 +179,6 @@ public final class AdminNotesIntegration {
                         UUID.class
                 );
 
-                addOffenseHistoryNoteMethod = apiClass.getMethod(
-                        "addSystemNote",
-                        UUID.class,
-                        String.class
-                );
 
                 available = true;
 
@@ -206,7 +200,7 @@ public final class AdminNotesIntegration {
      * Adds an immutable historical ASS check result to Admin Notes.
      */
     public static void recordCheckHistory(UUID playerUuid, String status, Set<String> detectedKeys) {
-        if (playerUuid == null || !initialize() || addOffenseHistoryNoteMethod == null) return;
+        if (playerUuid == null || !initialize()) return;
 
         try {
             String date = LocalDate.now().format(DATE_FORMAT);
@@ -224,7 +218,7 @@ public final class AdminNotesIntegration {
                 }
             }
 
-            addOffenseHistoryNoteMethod.invoke(null, playerUuid, text.toString());
+            addSystemNoteMethod.invoke(null, playerUuid, text.toString());
         } catch (Throwable ex) {
             AirportSecuritySystem.LOGGER.debug(
                     "[Airport Security System] Failed to record ASS check history for {}.",
