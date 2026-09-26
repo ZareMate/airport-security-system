@@ -285,7 +285,7 @@ public final class AirportSecuritySystemOffenses {
                         continue;
                     }
 
-                    String normalized = text.replace("\\\\n", "\n");
+                    String normalized = text.replace("\\n", "\n");
                     if (!normalized.toLowerCase(Locale.ROOT).contains(" detected")
                             && !normalized.toLowerCase(Locale.ROOT).contains("cleared (last:")) {
                         continue;
@@ -540,6 +540,32 @@ public final class AirportSecuritySystemOffenses {
             return name;
         }
 
+        private static String latestDate(String current, String candidate) {
+            if (candidate == null || candidate.isBlank()) return current;
+            if (current == null || current.isBlank()) return candidate;
+
+            try {
+                LocalDate currentDate = LocalDate.parse(current, DATE_FORMAT);
+                LocalDate candidateDate = LocalDate.parse(candidate, DATE_FORMAT);
+                return candidateDate.isAfter(currentDate) ? candidate : current;
+            } catch (Exception ignored) {
+                return candidate;
+            }
+        }
+
+        private static boolean isDateAtOrAfter(String first, String second) {
+            if (second == null || second.isBlank()) return true;
+            if (first == null || first.isBlank()) return false;
+
+            try {
+                LocalDate firstDate = LocalDate.parse(first, DATE_FORMAT);
+                LocalDate secondDate = LocalDate.parse(second, DATE_FORMAT);
+                return !firstDate.isBefore(secondDate);
+            } catch (Exception ignored) {
+                return first.equals(second);
+            }
+        }
+
         public Map<String, String> getDetectionDates() {
             return Map.copyOf(detectionDates);
         }
@@ -569,15 +595,22 @@ public final class AirportSecuritySystemOffenses {
         }
 
         public String getStatus() {
-            if (clearedDate != null) {
-                return "CLEAN";
+            if (detectionDates.isEmpty()) {
+                return clearedDate != null ? "CLEAN" : "UNKNOWN";
             }
 
-            if (!detectionDates.isEmpty()) {
+            if (clearedDate == null) {
                 return "DETECTED";
             }
 
-            return "UNKNOWN";
+            String latestDetection = null;
+            for (String date : detectionDates.values()) {
+                latestDetection = latestDate(latestDetection, date);
+            }
+
+            return isDateAtOrAfter(clearedDate, latestDetection)
+                    ? "CLEAN"
+                    : "DETECTED";
         }
     }
 
