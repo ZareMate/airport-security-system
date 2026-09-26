@@ -46,6 +46,8 @@ Each player record keeps the persistent offense timeline plus check statistics. 
 
 `/offense_rate` uses the ASS database directly and reports current cleared-vs-detected player percentages, total recorded checks, check result percentages, and the distribution of detected categories.
 
+When upgrading from the older Admin Notes-backed implementation, ASS migrates its existing offense/history data when `airport_security_system_offenses.json` is empty, then removes the legacy ASS cheat/history notes from Admin Notes. New checks update the dedicated `[ASS]` category through the Admin Notes API.
+
 ## LuckPerms
 
 The default permissions are:
@@ -140,7 +142,7 @@ Clean results are not broadcast.
 
 Airport Security System has optional support for the [Admin Notes](https://github.com/ZareMate/admin-notes) mod (version 2.0.0 or newer).
 
-When Admin Notes is installed, completed security checks can additionally maintain **one mirrored system note per player**.
+When Admin Notes is installed, completed security checks additionally maintain **one `[ASS]` system category per player**.
 
 The note keeps a persistent detection history. Each detected category has its own last-detected date:
 
@@ -159,6 +161,7 @@ The `cleared` line is the current clear state and is only present after a clean 
 - A clean check adds or updates the `cleared` line without deleting any detection history.
 - When a later check detects a cheat, the `cleared` line is removed and the detected category dates are updated.
 - Existing older per-category Airport Security System notes are automatically consolidated.
+- The `[ASS]` category is rendered by Admin Notes in gold and does not expose its internal note ID.
 - Existing manually authored Admin Notes are left unchanged.
 - Inconclusive checks do not change the persistent detection/clear history.
 
