@@ -40,26 +40,69 @@ public final class AirportSecuritySystemEvents {
     public static void onCommands(RegisterCommandsEvent event) {
         var command = Commands.literal("airport_security_system")
                 .requires(source -> source.hasPermission(3) || LuckPermsPermissions.hasPermission(source, AirportSecuritySystemConfig.COMMAND_PERMISSION.get()))
-                .then(Commands.argument("player",
-                        net.minecraft.commands.arguments.EntityArgument.player())
-                        .executes(ctx -> {
-                            ServerPlayer target =
-                                    net.minecraft.commands.arguments.EntityArgument.getPlayer(ctx, "player");
-                            return startCheck(target, ctx.getSource());
-                        }));
+                .then(Commands.argument("player", net.minecraft.commands.arguments.StringArgumentType.word())
+                        .executes(ctx -> startCheckByIdentifier(
+                                ctx.getSource(),
+                                net.minecraft.commands.arguments.StringArgumentType.getString(ctx, "player")
+                        )));
 
         event.getDispatcher().register(command);
         event.getDispatcher().register(
                 Commands.literal("ass")
                         .requires(source -> source.hasPermission(3) || LuckPermsPermissions.hasPermission(source, AirportSecuritySystemConfig.COMMAND_PERMISSION.get()))
-                        .then(Commands.argument("player",
-                                net.minecraft.commands.arguments.EntityArgument.player())
-                                .executes(ctx -> {
-                                    ServerPlayer target =
-                                            net.minecraft.commands.arguments.EntityArgument.getPlayer(ctx, "player");
-                                    return startCheck(target, ctx.getSource());
-                                }))
+                        .then(Commands.argument("player", net.minecraft.commands.arguments.StringArgumentType.word())
+                                .executes(ctx -> startCheckByIdentifier(
+                                        ctx.getSource(),
+                                        net.minecraft.commands.arguments.StringArgumentType.getString(ctx, "player")
+                                )))
         );
+    }
+
+    /**
+     * Resolves an online player by either their Minecraft name or UUID.
+     *
+     * <p>UUID input accepts both dashed and undashed forms.</p>
+     */
+    private static int startCheckByIdentifier(
+            net.minecraft.commands.CommandSourceStack source,
+            String identifier
+    ) {
+        ServerPlayer target = null;
+
+        // First try the exact online player name.
+        for (ServerPlayer player : source.getServer().getPlayerList().getPlayers()) {
+            if (player.getGameProfile().getName().equalsIgnoreCase(identifier)) {
+                target = player;
+                break;
+            }
+        }
+
+        // If it was not a name, try UUID.
+        if (target == null) {
+            try {
+                String normalized = identifier.replace("-", "");
+                if (normalized.length() == 32) {
+                    normalized = normalized.replaceFirst(
+                            "(?i)(.{8})(.{4})(.{4})(.{4})(.{12})",
+                            "$1-$2-$3-$4-$5"
+                    );
+                }
+
+                UUID uuid = UUID.fromString(normalized);
+                target = source.getServer().getPlayerList().getPlayer(uuid);
+            } catch (IllegalArgumentException ignored) {
+                // Not a UUID; the name lookup above already failed.
+            }
+        }
+
+        if (target == null) {
+            source.sendFailure(Component.literal(
+                    "Player not found or not online: " + identifier
+            ));
+            return 0;
+        }
+
+        return startCheck(target, source);
     }
 
     @SubscribeEvent
