@@ -29,6 +29,34 @@ Short alias:
 
 The command requires the configured command permission unless the command source has permission level 3 or higher.
 
+## Admin Notes offense statistics
+
+When the optional [Admin Notes](https://github.com/ZareMate/admin-notes) integration is installed, completed Airport Security System checks are stored as historical system records in addition to the current player status.
+
+Admin Notes provides:
+
+```
+/offenses <player>
+```
+
+This shows only the Airport Security System offense categories recorded for that player. The player can be specified by name or UUID.
+
+Statistics are available with:
+
+```
+/offense_rate
+```
+
+The command reports:
+
+- total recorded checks
+- cleared, detected, and inconclusive check percentages
+- the cleared-vs-detected percentage among resolved checks
+- the percentage distribution of detected check types
+- the number of detected checks for each type
+
+Historical records allow the statistics to include previous checks even though a player's current ASS system note may later change from detected to cleared.
+
 ## LuckPerms
 
 The default permissions are:
