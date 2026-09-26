@@ -46,7 +46,18 @@ Each player record keeps the persistent offense timeline plus check statistics. 
 
 `/offense_rate` uses the ASS database directly and reports current cleared-vs-detected player percentages, total recorded checks, check result percentages, and the distribution of detected categories.
 
-When upgrading from the older Admin Notes-backed implementation, ASS migrates its existing offense/history data when `airport_security_system_offenses.json` is empty, then removes the legacy ASS cheat/history notes from Admin Notes. New checks update the dedicated `[ASS]` category through the Admin Notes API.
+### Public API
+
+Other server-side mods can read ASS offense data through `com.zaremate.airport_security_system.AirportSecuritySystemAPI`:
+
+```java
+AirportSecuritySystemAPI.getPlayerOffense(playerUuid);
+AirportSecuritySystemAPI.getPlayerOffenses();
+```
+
+The API returns immutable offense snapshots containing the current status, persistent detection dates, cleared date, check counts, and historical category counts. Admin Notes uses this API as a live reader when `/note <player>` is executed; it does not store ASS data.
+
+When upgrading from the older Admin Notes-backed implementation, ASS migrates its existing offense/history data when `airport_security_system_offenses.json` is empty, then removes the legacy ASS cheat/history notes from Admin Notes. New checks update the ASS-owned database; Admin Notes reads the current state from the public ASS API when `/note` is used.
 
 ## LuckPerms
 
@@ -142,7 +153,7 @@ Clean results are not broadcast.
 
 Airport Security System has optional support for the [Admin Notes](https://github.com/ZareMate/admin-notes) mod (version 2.0.0 or newer).
 
-When Admin Notes is installed, completed security checks additionally maintain **one `[ASS]` system category per player**.
+When Admin Notes is installed, `/note <player>` can display the current ASS offense state as a live **`[ASS]` category**.
 
 The note keeps a persistent detection history. Each detected category has its own last-detected date:
 
