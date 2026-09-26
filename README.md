@@ -153,24 +153,25 @@ Airport Security System has optional support for the [Admin Notes](https://githu
 
 When Admin Notes is installed, completed security checks automatically maintain **one system note per player**.
 
-If multiple detections are found, they are combined into the same note:
+The note keeps a persistent detection history. Each detected category has its own last-detected date:
 
 ```
-x-ray detected
-freecam detected (last: dd-mm-yyyy)
+x-ray detected (last: dd-mm-yyyy)
+toolswap detected (last: dd-mm-yyyy)
+cleared (last: dd-mm-yyyy)
 ```
 
-The note is updated on later checks rather than creating another note.
+The `cleared` line is the current clear state and is only present after a clean check.
 
 - All Airport Security System detections for a player use one system note.
 - Multiple detection categories are stored together in that note.
-- Existing older per-category Airport Security System notes are automatically consolidated the next time a detection is recorded.
-- A clean check replaces the Airport Security System detection note with:
-  ```
-  cleared (last: dd-mm-yyyy)
-  ```
-- Repeated clean checks update that same cleared note instead of creating duplicates.
+- When a category is detected again, only that category's date is updated.
+- Detection dates for categories not detected in the current check are preserved.
+- A clean check adds or updates the `cleared` line without deleting any detection history.
+- When a later check detects a cheat, the `cleared` line is removed and the detected category dates are updated.
+- Existing older per-category Airport Security System notes are automatically consolidated.
 - Existing manually authored Admin Notes are left unchanged.
+- Inconclusive checks do not change the persistent detection/clear history.
 
 The integration is optional and uses the Admin Notes API without requiring the Admin Notes mod to be installed.
 
