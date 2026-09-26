@@ -29,7 +29,7 @@ Short alias:
 
 The command requires the configured command permission unless the command source has permission level 3 or higher.
 
-## Admin Notes offense commands
+## Offense commands
 
 When the optional [Admin Notes](https://github.com/ZareMate/admin-notes) integration is installed, Airport Security System owns the ASS-specific offense commands:
 
