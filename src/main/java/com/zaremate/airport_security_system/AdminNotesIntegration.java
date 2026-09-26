@@ -32,6 +32,7 @@ public final class AdminNotesIntegration {
     private static Method addSystemNoteMethod;
     private static Method editNoteMethod;
     private static Method removeNoteMethod;
+    private static Method addOffenseHistoryNoteMethod;
 
     private AdminNotesIntegration() {}
 
@@ -179,6 +180,12 @@ public final class AdminNotesIntegration {
                         UUID.class
                 );
 
+                addOffenseHistoryNoteMethod = apiClass.getMethod(
+                        "addSystemNote",
+                        UUID.class,
+                        String.class
+                );
+
                 available = true;
 
                 AirportSecuritySystem.LOGGER.info(
@@ -192,6 +199,38 @@ public final class AdminNotesIntegration {
             }
 
             return available;
+        }
+    }
+
+    /**
+     * Adds an immutable historical ASS check result to Admin Notes.
+     */
+    public static void recordCheckHistory(UUID playerUuid, String status, Set<String> detectedKeys) {
+        if (playerUuid == null || !initialize() || addOffenseHistoryNoteMethod == null) return;
+
+        try {
+            String date = LocalDate.now().format(DATE_FORMAT);
+            StringBuilder text = new StringBuilder("ASS_CHECK|")
+                    .append(status == null ? "UNKNOWN" : status.toUpperCase(Locale.ROOT))
+                    .append("|")
+                    .append(date);
+
+            if (detectedKeys != null && !detectedKeys.isEmpty()) {
+                for (String key : detectedKeys) {
+                    String category = detectionCategory(key);
+                    if (!category.isBlank()) {
+                        text.append("|").append(category.replace("|", "/"));
+                    }
+                }
+            }
+
+            addOffenseHistoryNoteMethod.invoke(null, playerUuid, text.toString());
+        } catch (Throwable ex) {
+            AirportSecuritySystem.LOGGER.debug(
+                    "[Airport Security System] Failed to record ASS check history for {}.",
+                    playerUuid,
+                    unwrap(ex)
+            );
         }
     }
 
