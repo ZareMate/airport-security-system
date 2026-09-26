@@ -113,8 +113,10 @@ public final class AirportSecuritySystemAPI {
             Map<String, Long> detectionCounts
     ) {
         public PlayerOffense {
-            detectionDates = Map.copyOf(detectionDates);
-            detectionCounts = Map.copyOf(detectionCounts);
+            detectionDates = java.util.Collections.unmodifiableMap(
+                new java.util.LinkedHashMap<>(detectionDates));
+        detectionCounts = java.util.Collections.unmodifiableMap(
+                new java.util.LinkedHashMap<>(detectionCounts));
         }
     }
 }
