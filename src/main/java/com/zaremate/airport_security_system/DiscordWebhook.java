@@ -13,13 +13,14 @@ public final class DiscordWebhook {
 
     private DiscordWebhook() {}
 
-    public static void send(String player, String uuid, String status, String details) {
+    public static void send(String player, String uuid, String status, String details, boolean manual) {
         String url = AirportSecuritySystemConfig.webhookUrl();
         if (!AirportSecuritySystemConfig.WEBHOOK_ENABLED.get() || url.isBlank()) return;
 
         String safeStatus = escapeMarkdown(status);
         String description = "Player: **" + escapeMarkdown(player) + "**\n"
                 + "UUID: `" + escapeMarkdown(uuid) + "`\n"
+                + "Check: **" + (manual ? "MANUAL" : "AUTOMATIC") + "**\n"
                 + "Status: **" + safeStatus + "**\n\n"
                 + escapeMarkdown(details);
 
