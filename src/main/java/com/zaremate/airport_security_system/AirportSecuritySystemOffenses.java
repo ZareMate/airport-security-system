@@ -205,6 +205,7 @@ public final class AirportSecuritySystemOffenses {
 
         if (Files.notExists(dataFile)) {
             save();
+            migrateFromAdminNotes();
             return;
         }
 
@@ -245,6 +246,150 @@ public final class AirportSecuritySystemOffenses {
                     "[Airport Security System] Failed to load offense storage.",
                     ex
             );
+        }
+    }
+
+    /**
+     * One-time migration of the existing ASS timeline from Admin Notes.
+     *
+     * <p>The new offense database remains authoritative after migration.
+     * Existing timeline dates are imported so upgrading does not erase the
+     * user's current ASS offense state.</p>
+     */
+    private static void migrateFromAdminNotes() {
+        try {
+            Class<?> apiClass = Class.forName("com.zaremate.admin_notes.AdminNotesAPI");
+            java.lang.reflect.Method getPlayers = apiClass.getMethod("getPlayers");
+            java.lang.reflect.Method getNotes = apiClass.getMethod("getNotes", UUID.class);
+
+            @SuppressWarnings("unchecked")
+            List<UUID> uuids = (List<UUID>) getPlayers.invoke(null);
+
+            boolean changed = false;
+
+            for (UUID uuid : uuids) {
+                @SuppressWarnings("unchecked")
+                List<Object> notes = (List<Object>) getNotes.invoke(null, uuid);
+
+                PlayerRecord record = new PlayerRecord();
+                boolean assNoteFound = false;
+
+                for (Object note : notes) {
+                    java.lang.reflect.Method isSystem = note.getClass().getMethod("isSystem");
+                    if (!Boolean.TRUE.equals(isSystem.invoke(note))) {
+                        continue;
+                    }
+
+                    String text = (String) note.getClass().getMethod("text").invoke(note);
+                    if (text == null || text.isBlank()) {
+                        continue;
+                    }
+
+                    String normalized = text.replace("\\\\n", "\n");
+                    if (!normalized.toLowerCase(Locale.ROOT).contains(" detected")
+                            && !normalized.toLowerCase(Locale.ROOT).contains("cleared (last:")) {
+                        continue;
+                    }
+
+                    assNoteFound = true;
+
+                    for (String line : normalized.split("\\R")) {
+                        String value = line.trim();
+                        String lower = value.toLowerCase(Locale.ROOT);
+
+                        if (lower.startsWith("cleared (last:")) {
+                            String date = parseTimelineDate(value);
+                            if (date != null) {
+                                record.clearedDate = laterDate(record.clearedDate, date);
+                            }
+                            continue;
+                        }
+
+                        int detected = lower.indexOf(" detected");
+                        if (detected <= 0) {
+                            continue;
+                        }
+
+                        String category = value.substring(0, detected).trim();
+                        String date = parseTimelineDate(value);
+                        if (!category.isBlank() && date != null) {
+                            record.detectionDates.put(
+                                    category,
+                                    laterDate(record.detectionDates.get(category), date)
+                            );
+                        }
+                    }
+                }
+
+                if (!assNoteFound) {
+                    continue;
+                }
+
+                Object storedName = null;
+                try {
+                    storedName = apiClass.getMethod("getPlayerName", UUID.class).invoke(null, uuid);
+                } catch (Throwable ignored) {
+                }
+
+                if (storedName instanceof java.util.Optional<?> optional
+                        && optional.isPresent()
+                        && optional.get() instanceof String name) {
+                    record.name = name;
+                } else {
+                    record.name = uuid.toString();
+                }
+
+                record.normalize();
+                PLAYERS.put(uuid, record);
+                changed = true;
+            }
+
+            if (changed) {
+                save();
+                AirportSecuritySystem.LOGGER.info(
+                        "[Airport Security System] Migrated existing ASS offense timelines from Admin Notes."
+                );
+            }
+        } catch (ClassNotFoundException ignored) {
+            // Admin Notes is optional.
+        } catch (Throwable ex) {
+            AirportSecuritySystem.LOGGER.warn(
+                    "[Airport Security System] Failed to migrate ASS offense timelines from Admin Notes.",
+                    ex
+            );
+        }
+    }
+
+    private static String parseTimelineDate(String text) {
+        int start = text.lastIndexOf("(last:");
+        if (start < 0) {
+            return null;
+        }
+
+        int valueStart = start + "(last:".length();
+        int end = text.indexOf(')', valueStart);
+        if (end < 0) {
+            return null;
+        }
+
+        String date = text.substring(valueStart, end).trim();
+        return date.isBlank() ? null : date;
+    }
+
+    private static String laterDate(String current, String candidate) {
+        if (candidate == null || candidate.isBlank()) {
+            return current;
+        }
+        if (current == null || current.isBlank()) {
+            return candidate;
+        }
+
+        try {
+            LocalDate currentDate = LocalDate.parse(current, DATE_FORMAT);
+            LocalDate candidateDate = LocalDate.parse(candidate, DATE_FORMAT);
+            return candidateDate.isAfter(currentDate) ? candidate : current;
+        } catch (Exception ignored) {
+            return candidate;
         }
     }
 
