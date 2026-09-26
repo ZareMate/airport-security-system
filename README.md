@@ -29,33 +29,20 @@ Short alias:
 
 The command requires the configured command permission unless the command source has permission level 3 or higher.
 
-## Admin Notes offense statistics
+## Admin Notes offense commands
 
-When the optional [Admin Notes](https://github.com/ZareMate/admin-notes) integration is installed, completed Airport Security System checks are stored as historical system records in addition to the current player status.
-
-Admin Notes provides:
+When the optional [Admin Notes](https://github.com/ZareMate/admin-notes) integration is installed, Airport Security System owns the ASS-specific offense commands:
 
 ```
 /offenses <player>
-```
-
-This shows only the Airport Security System offense categories recorded for that player. The player can be specified by name or UUID.
-
-Statistics are available with:
-
-```
 /offense_rate
 ```
 
-The command reports:
+`/offenses <player>` shows only Airport Security System detection categories and their last-detected dates. The player can be specified by name or UUID.
 
-- total recorded checks
-- cleared, detected, and inconclusive check percentages
-- the cleared-vs-detected percentage among resolved checks
-- the percentage distribution of detected check types
-- the number of detected checks for each type
+The ASS persistent timeline is the source of truth. It keeps one system note per player with category-specific last-detected dates and an optional `cleared` date. Inconclusive checks do not modify that timeline.
 
-Historical records allow the statistics to include previous checks even though a player's current ASS system note may later change from detected to cleared.
+`/offense_rate` reports the current ASS state distribution for online players represented in Admin Notes. It does not count individual historical checks, because the persistent timeline stores last-known detection/clear dates rather than every check event.
 
 ## LuckPerms
 
