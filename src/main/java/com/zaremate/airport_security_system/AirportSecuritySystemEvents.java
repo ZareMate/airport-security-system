@@ -179,6 +179,11 @@ public final class AirportSecuritySystemEvents {
         final long finalCleanChecks = cleanChecks;
         final long finalDetectedChecks = detectedChecks;
         final long finalInconclusiveChecks = inconclusiveChecks;
+        long totalCategoryDetections = 0;
+        for (long count : categoryCounts.values()) {
+            totalCategoryDetections += count;
+        }
+        final long finalTotalCategoryDetections = totalCategoryDetections;
 
         source.sendSuccess(() -> Component.literal(
                 "Players with ASS records: " + finalTotalPlayers
@@ -227,8 +232,8 @@ public final class AirportSecuritySystemEvents {
                 source.sendSuccess(() -> Component.literal(
                         entry.getKey() + ": " + count
                                 + " detection(s) — "
-                                + percent(count, finalDetectedChecks)
-                                + "% of detected checks"
+                                + percent(count, finalTotalCategoryDetections)
+                                + "% of category detections"
                 ).withColor(0xFF5555), false);
             }
         }
