@@ -10,6 +10,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 import java.util.UUID;
+import java.util.Map;
 
 /**
  * Optional integration with the Admin Notes mod.
@@ -52,6 +53,62 @@ public final class AdminNotesIntegration {
      *
      * <p>Existing manually authored Admin Notes are never changed.</p>
      */
+    /**
+     * Returns the current Airport Security System offense state for a player.
+     * The returned map contains normalized detection categories. A null map
+     * means the player has no ASS system note or the integration is unavailable.
+     */
+    public static Map<String, Object> getPlayerOffenseState(UUID playerUuid) {
+        if (playerUuid == null || !initialize()) {
+            return null;
+        }
+
+        try {
+            @SuppressWarnings("unchecked")
+            List<Object> notes = (List<Object>) getNotesMethod.invoke(null, playerUuid);
+
+            List<Object> detectionNotes = findDetectionNotes(notes);
+            if (!detectionNotes.isEmpty()) {
+                Set<String> categories = new LinkedHashSet<>();
+                String latestDate = null;
+
+                for (Object note : detectionNotes) {
+                    categories.addAll(parseDetectionCategories(noteText(note)));
+                    String date = parseLatestDate(noteText(note));
+                    if (date != null) latestDate = date;
+                }
+
+                return Map.of(
+                        "status", "DETECTED",
+                        "categories", categories,
+                        "last", latestDate == null ? "Unknown" : latestDate
+                );
+            }
+
+            if (!findClearedNotes(notes).isEmpty()) {
+                String latestDate = null;
+                for (Object note : findClearedNotes(notes)) {
+                    String date = parseLatestDate(noteText(note));
+                    if (date != null) latestDate = date;
+                }
+                return Map.of(
+                        "status", "CLEAN",
+                        "categories", Set.of(),
+                        "last", latestDate == null ? "Unknown" : latestDate
+                );
+            }
+
+            return null;
+        } catch (Throwable ex) {
+            AirportSecuritySystem.LOGGER.debug(
+                    "[Airport Security System] Failed to read Admin Notes offense state for {}.",
+                    playerUuid,
+                    unwrap(ex)
+            );
+            return null;
+        }
+    }
+
     public static void recordCheckResult(UUID playerUuid, Set<String> detectedKeys) {
         if (playerUuid == null || !initialize()) {
             return;
@@ -342,6 +399,17 @@ public final class AdminNotesIntegration {
         }
 
         return result.toString();
+    }
+
+    private static String parseLatestDate(String text) {
+        if (text == null) return null;
+        int start = text.lastIndexOf("(last:");
+        if (start < 0) return null;
+        int valueStart = start + "(last:".length();
+        int end = text.indexOf(')', valueStart);
+        if (end < 0) return null;
+        String date = text.substring(valueStart, end).trim();
+        return date.isBlank() ? null : date;
     }
 
     private static boolean isClearedNote(String text) {
