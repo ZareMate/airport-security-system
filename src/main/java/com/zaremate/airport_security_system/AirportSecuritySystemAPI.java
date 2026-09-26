@@ -57,13 +57,7 @@ public final class AirportSecuritySystemAPI {
 
         List<AirportSecuritySystemOffenses.PlayerRecord> records =
                 AirportSecuritySystemOffenses.getPlayers();
-
-        /*
-         * PlayerRecord intentionally exposes the player name but not its UUID,
-         * so use the storage UUID list to pair records by stable iteration
-         * order.
-         */
-        List<UUID> uuids = getStoredPlayerUuids();
+        List<UUID> uuids = AirportSecuritySystemOffenses.getPlayerUuids();
 
         int count = Math.min(uuids.size(), records.size());
         for (int i = 0; i < count; i++) {
@@ -71,26 +65,6 @@ public final class AirportSecuritySystemAPI {
         }
 
         return result;
-    }
-
-    private static List<UUID> getStoredPlayerUuids() {
-        try {
-            java.lang.reflect.Method method =
-                    AirportSecuritySystemOffenses.class.getDeclaredMethod(
-                            "getStoredPlayerUuids"
-                    );
-            method.setAccessible(true);
-
-            @SuppressWarnings("unchecked")
-            List<UUID> uuids = (List<UUID>) method.invoke(null);
-            return uuids;
-        } catch (Throwable ignored) {
-            /*
-             * Fallback for API compatibility if the internal helper is not
-             * available. Per-player access remains fully functional.
-             */
-            return List.of();
-        }
     }
 
     private static PlayerOffense toApiRecord(
