@@ -172,16 +172,24 @@ public final class AirportSecuritySystemEvents {
                 "AIRPORT SECURITY OFFENSE RATE"
         ).withStyle(s -> s.withColor(0xFFAA00).withBold(true)), false);
 
+        final int finalTotalPlayers = totalPlayers;
+        final int finalClearedPlayers = clearedPlayers;
+        final int finalDetectedPlayers = detectedPlayers;
+        final long finalTotalChecks = totalChecks;
+        final long finalCleanChecks = cleanChecks;
+        final long finalDetectedChecks = detectedChecks;
+        final long finalInconclusiveChecks = inconclusiveChecks;
+
         source.sendSuccess(() -> Component.literal(
-                "Players with ASS records: " + totalPlayers
+                "Players with ASS records: " + finalTotalPlayers
         ), false);
         source.sendSuccess(() -> Component.literal(
-                "Cleared: " + clearedPlayers + " ("
-                        + percent(clearedPlayers, totalPlayers) + "%)"
+                "Cleared: " + finalClearedPlayers + " ("
+                        + percent(finalClearedPlayers, finalTotalPlayers) + "%)"
         ), false);
         source.sendSuccess(() -> Component.literal(
-                "Detected: " + detectedPlayers + " ("
-                        + percent(detectedPlayers, totalPlayers) + "%)"
+                "Detected: " + finalDetectedPlayers + " ("
+                        + percent(finalDetectedPlayers, finalTotalPlayers) + "%)"
         ), false);
 
         source.sendSuccess(() -> Component.literal(""), false);
@@ -189,19 +197,19 @@ public final class AirportSecuritySystemEvents {
                 "Recorded checks:"
         ), false);
         source.sendSuccess(() -> Component.literal(
-                "Total: " + totalChecks
+                "Total: " + finalTotalChecks
         ), false);
         source.sendSuccess(() -> Component.literal(
-                "Cleared: " + cleanChecks + " ("
-                        + percent(cleanChecks, totalChecks) + "%)"
+                "Cleared: " + finalCleanChecks + " ("
+                        + percent(finalCleanChecks, finalTotalChecks) + "%)"
         ), false);
         source.sendSuccess(() -> Component.literal(
-                "Detected: " + detectedChecks + " ("
-                        + percent(detectedChecks, totalChecks) + "%)"
+                "Detected: " + finalDetectedChecks + " ("
+                        + percent(finalDetectedChecks, finalTotalChecks) + "%)"
         ), false);
         source.sendSuccess(() -> Component.literal(
-                "Inconclusive: " + inconclusiveChecks + " ("
-                        + percent(inconclusiveChecks, totalChecks) + "%)"
+                "Inconclusive: " + finalInconclusiveChecks + " ("
+                        + percent(finalInconclusiveChecks, finalTotalChecks) + "%)"
         ), false);
 
         source.sendSuccess(() -> Component.literal(""), false);
@@ -622,6 +630,12 @@ public final class AirportSecuritySystemEvents {
                 );
                 sendCommandResult(session, "DETECTED", details.toString());
                 broadcastStaff(session, (session.commandSource != null ? "[MANUAL] " : "") + name + " — DETECTED\n" + details);
+                AirportSecuritySystemOffenses.recordCheck(
+                        session.player.getUUID(),
+                        name,
+                        "DETECTED",
+                        session.detected
+                );
                 AdminNotesIntegration.recordCheckResult(session.player.getUUID(), session.detected);
             } else if (!session.protectedKeys.isEmpty()) {
                 String list = String.join("\n", session.protectedKeys);
@@ -636,11 +650,23 @@ public final class AirportSecuritySystemEvents {
                 );
                 sendCommandResult(session, "INCONCLUSIVE", details);
                 broadcastStaff(session, (session.commandSource != null ? "[MANUAL] " : "") + name + " — INCONCLUSIVE\n" + details);
+            AirportSecuritySystemOffenses.recordCheck(
+                    session.player.getUUID(),
+                    name,
+                    "INCONCLUSIVE",
+                    Set.of()
+            );
             } else {
                 if (AirportSecuritySystemConfig.LOG_CLEAN_CHECKS.get())
                     LOGGER.info("[Airport Security System] {}: no blacklisted keybinds detected.", name);
                 String details = "No configured blacklisted keybinds were resolved.";
                 sendCommandResult(session, "CLEAN", details);
+                AirportSecuritySystemOffenses.recordCheck(
+                        session.player.getUUID(),
+                        name,
+                        "CLEAN",
+                        Set.of()
+                );
                 AdminNotesIntegration.recordCheckResult(session.player.getUUID(), Set.of());
                 // Clean checks are only logged/returned to the command sender; they are not broadcast.
                 if (session.commandSource != null) {
