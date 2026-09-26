@@ -5,7 +5,6 @@ import com.google.gson.GsonBuilder;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
-import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.world.level.storage.LevelResource;
 import net.neoforged.bus.api.SubscribeEvent;
@@ -142,11 +141,6 @@ public final class AirportSecuritySystemOffenses {
         return record == null ? null : record.copy();
     }
 
-    public static synchronized List<UUID> getPlayerUuids() {
-        ensureInitialized();
-        return List.copyOf(PLAYERS.keySet());
-    }
-
     public static synchronized List<PlayerRecord> getPlayers() {
         ensureInitialized();
 
@@ -167,7 +161,15 @@ public final class AirportSecuritySystemOffenses {
         String value = identifier.trim();
 
         try {
-            UUID uuid = UUID.fromString(value);
+            String normalized = value.replace("-", "");
+            if (normalized.length() == 32) {
+                normalized = normalized.replaceFirst(
+                        "(?i)(.{8})(.{4})(.{4})(.{4})(.{12})",
+                        "$1-$2-$3-$4-$5"
+                );
+            }
+
+            UUID uuid = UUID.fromString(normalized);
             if (PLAYERS.containsKey(uuid)) {
                 return uuid;
             }
