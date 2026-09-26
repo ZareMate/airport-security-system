@@ -648,53 +648,86 @@ public final class AdminNotesIntegration {
     }
 
     public static int showOffenseRate(net.minecraft.commands.CommandSourceStack source) {
-        var server = source.getServer();
-        if (server == null) {
-            source.sendFailure(net.minecraft.network.chat.Component.literal("Server unavailable."));
+        if (!initialize()) {
+            source.sendFailure(net.minecraft.network.chat.Component.literal(
+                    "Admin Notes integration is unavailable."));
             return 0;
         }
 
-        int totalPlayers = 0;
-        int clearedPlayers = 0;
-        int detectedPlayers = 0;
-        Map<String, Integer> categoryCounts = new java.util.TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+        try {
+            Method getPlayersMethod = Class.forName(API_CLASS_NAME).getMethod("getPlayers");
 
-        for (ServerPlayer player : server.getPlayerList().getPlayers()) {
-            Map<String, Object> state = getPlayerOffenseState(player.getUUID());
-            if (state == null) continue;
-            totalPlayers++;
-            if ("CLEAN".equals(state.get("status"))) {
-                clearedPlayers++;
-            } else if ("DETECTED".equals(state.get("status"))) {
-                detectedPlayers++;
-                Object categories = state.get("categories");
-                if (categories instanceof Set<?> set) {
-                    for (Object category : set) {
-                        if (category instanceof String value && !value.isBlank()) {
-                            categoryCounts.merge(value, 1, Integer::sum);
+            @SuppressWarnings("unchecked")
+            List<UUID> playerUuids = (List<UUID>) getPlayersMethod.invoke(null);
+
+            int totalPlayers = 0;
+            int clearedPlayers = 0;
+            int detectedPlayers = 0;
+            Map<String, Integer> categoryCounts =
+                    new java.util.TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+
+            for (UUID uuid : playerUuids) {
+                Map<String, Object> state = getPlayerOffenseState(uuid);
+                if (state == null) continue;
+
+                totalPlayers++;
+                if ("CLEAN".equals(state.get("status"))) {
+                    clearedPlayers++;
+                } else if ("DETECTED".equals(state.get("status"))) {
+                    detectedPlayers++;
+
+                    Object categories = state.get("categories");
+                    if (categories instanceof Set<?> set) {
+                        for (Object category : set) {
+                            if (category instanceof String value && !value.isBlank()) {
+                                categoryCounts.merge(value, 1, Integer::sum);
+                            }
                         }
                     }
                 }
             }
-        }
 
-        source.sendSuccess(() -> net.minecraft.network.chat.Component.literal("AIRPORT SECURITY OFFENSE RATE").withStyle(s -> s.withColor(0xFFAA00).withBold(true)), false);
-        source.sendSuccess(() -> net.minecraft.network.chat.Component.literal("Players with ASS records (online): " + totalPlayers), false);
-        source.sendSuccess(() -> net.minecraft.network.chat.Component.literal("Cleared: " + clearedPlayers + " (" + percent(clearedPlayers, totalPlayers) + "%)"), false);
-        source.sendSuccess(() -> net.minecraft.network.chat.Component.literal("Detected: " + detectedPlayers + " (" + percent(detectedPlayers, totalPlayers) + "%)"), false);
-        source.sendSuccess(() -> net.minecraft.network.chat.Component.literal("Cheat type distribution among detected players:"), false);
+            source.sendSuccess(() -> net.minecraft.network.chat.Component.literal(
+                    "───────────────────────────────────").withColor(0x555555), false);
+            source.sendSuccess(() -> net.minecraft.network.chat.Component.literal(
+                    "AIRPORT SECURITY OFFENSE RATE")
+                    .withStyle(st -> st.withColor(0xFFAA00).withBold(true)), false);
+            source.sendSuccess(() -> net.minecraft.network.chat.Component.literal(
+                    "Players with ASS records: " + totalPlayers), false);
+            source.sendSuccess(() -> net.minecraft.network.chat.Component.literal(
+                    "Cleared: " + clearedPlayers + " (" + percent(clearedPlayers, totalPlayers) + "%)"), false);
+            source.sendSuccess(() -> net.minecraft.network.chat.Component.literal(
+                    "Detected: " + detectedPlayers + " (" + percent(detectedPlayers, totalPlayers) + "%)"), false);
 
-        if (categoryCounts.isEmpty()) {
-            source.sendSuccess(() -> net.minecraft.network.chat.Component.literal("No current detections recorded."), false);
-        } else {
-            for (Map.Entry<String, Integer> entry : categoryCounts.entrySet()) {
-                int count = entry.getValue();
+            source.sendSuccess(() -> net.minecraft.network.chat.Component.literal(""), false);
+            source.sendSuccess(() -> net.minecraft.network.chat.Component.literal(
+                    "Cheat type distribution among detected players:"), false);
+
+            if (categoryCounts.isEmpty()) {
                 source.sendSuccess(() -> net.minecraft.network.chat.Component.literal(
-                        entry.getKey() + ": " + count + " player(s) — " + percent(count, detectedPlayers) + "% of detected players"
-                ).withColor(0xFF5555), false);
+                        "No current detections recorded."), false);
+            } else {
+                for (Map.Entry<String, Integer> entry : categoryCounts.entrySet()) {
+                    int count = entry.getValue();
+                    source.sendSuccess(() -> net.minecraft.network.chat.Component.literal(
+                            entry.getKey() + ": " + count + " player(s) — "
+                                    + percent(count, detectedPlayers)
+                                    + "% of detected players"
+                    ).withColor(0xFF5555), false);
+                }
             }
+
+            source.sendSuccess(() -> net.minecraft.network.chat.Component.literal(
+                    "───────────────────────────────────").withColor(0x555555), false);
+            return 1;
+        } catch (Throwable ex) {
+            AirportSecuritySystem.LOGGER.warn(
+                    "[Airport Security System] Failed to calculate offense rate.",
+                    unwrap(ex));
+            source.sendFailure(net.minecraft.network.chat.Component.literal(
+                    "Failed to read Airport Security System offense statistics."));
+            return 0;
         }
-        return 1;
     }
 
     private static UUID resolvePlayerUuid(net.minecraft.commands.CommandSourceStack source, String identifier) {
