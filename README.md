@@ -123,24 +123,38 @@ Clean results are not broadcast.
 
 Airport Security System has optional support for the [Admin Notes](https://github.com/ZareMate/admin-notes) mod (version 2.0.0 or newer).
 
-When Admin Notes is installed, completed security checks automatically maintain system notes for each player:
+When Admin Notes is installed, completed security checks automatically maintain **one system note per player**.
+
+If multiple detections are found, they are combined into the same note:
 
 ```
-x-ray detected (last: dd-mm-yyyy)
-esp detected (last: dd-mm-yyyy)
+x-ray detected
+freecam detected (last: dd-mm-yyyy)
 ```
 
-- A new detection category is added as a separate note instead of replacing other detection notes.
-- When the same detection happens again, its existing note is updated with the newest date.
-- When a player passes a clean check and has no notes, Airport Security System adds:
+The note is updated on later checks rather than creating another note.
+
+- All Airport Security System detections for a player use one system note.
+- Multiple detection categories are stored together in that note.
+- Existing older per-category Airport Security System notes are automatically consolidated the next time a detection is recorded.
+- A clean check replaces the Airport Security System detection note with:
   ```
   cleared (last: dd-mm-yyyy)
   ```
-- A `cleared` note is removed as soon as a detection is recorded.
-- Repeated clean checks refresh an existing `cleared` note instead of creating duplicates.
+- Repeated clean checks update that same cleared note instead of creating duplicates.
 - Existing manually authored Admin Notes are left unchanged.
 
 The integration is optional and uses the Admin Notes API without requiring the Admin Notes mod to be installed.
+
+### Player lookup
+
+Both `/airport_security_system <player>` and `/ass <player>` accept an online player's:
+
+- Minecraft player name, for example `/ass Piotrusek69`
+- UUID, for example `/ass 887a052d-5618-4096-a154-46c4afa13794`
+- UUID without dashes is also accepted.
+
+The target must currently be online because the security check requires a live client connection.
 
 ## Discord webhook
 
