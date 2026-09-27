@@ -366,7 +366,7 @@ public final class AirportSecuritySystemEvents {
             PENDING_JOIN_CHECKS.remove(uuid);
             ServerPlayer player = event.getServer().getPlayerList().getPlayer(uuid);
             if (player != null && player.isAlive() && !SESSIONS.containsKey(uuid)) {
-                startCheck(player, null);
+                startCheck(player, null, false);
             }
         }
 
