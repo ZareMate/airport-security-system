@@ -2,6 +2,7 @@ package com.zaremate.airport_security_system;
 
 import com.mojang.logging.LogUtils;
 import net.minecraft.commands.Commands;
+import net.minecraft.commands.SharedSuggestionProvider;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
@@ -42,6 +43,12 @@ public final class AirportSecuritySystemEvents {
         var command = Commands.literal("airport_security_system")
                 .requires(source -> source.hasPermission(3) || LuckPermsPermissions.hasPermission(source, AirportSecuritySystemConfig.COMMAND_PERMISSION.get()))
                 .then(Commands.argument("player", StringArgumentType.word())
+                                .suggests((ctx, builder) -> SharedSuggestionProvider.suggest(
+                                        ctx.getSource().getServer().getPlayerList().getPlayers().stream()
+                                                .map(player -> player.getGameProfile().getName())
+                                                .toList(),
+                                        builder
+                                ))
                         .executes(ctx -> startCheckByIdentifier(
                                 ctx.getSource(),
                                 StringArgumentType.getString(ctx, "player"),
@@ -59,6 +66,12 @@ public final class AirportSecuritySystemEvents {
                 Commands.literal("ass")
                         .requires(source -> source.hasPermission(3) || LuckPermsPermissions.hasPermission(source, AirportSecuritySystemConfig.COMMAND_PERMISSION.get()))
                         .then(Commands.argument("player", StringArgumentType.word())
+                                .suggests((ctx, builder) -> SharedSuggestionProvider.suggest(
+                                        ctx.getSource().getServer().getPlayerList().getPlayers().stream()
+                                                .map(player -> player.getGameProfile().getName())
+                                                .toList(),
+                                        builder
+                                ))
                                 .executes(ctx -> startCheckByIdentifier(
                                         ctx.getSource(),
                                         StringArgumentType.getString(ctx, "player"),
