@@ -3,6 +3,7 @@ package com.zaremate.airport_security_system.client;
 import com.zaremate.airport_security_system.network.AirportSecuritySystemStatusPayload;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.network.chat.Component;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.fml.common.EventBusSubscriber;
 
@@ -47,6 +48,16 @@ public final class AirportSecuritySystemClient {
         graphics.fill(left, top, left + boxWidth, top + boxHeight, 0xF0182230);
         graphics.fill(left, top, left + boxWidth, top + 4, 0xFF35C7FF);
         graphics.fill(left, top + 4, left + boxWidth, top + 8, 0xFFFFC857);
+
+        String title = "AIRPORT SECURITY";
+        int titleWidth = minecraft.font.width(title);
+        graphics.drawString(
+                minecraft.font,
+                Component.literal(title),
+                width / 2 - titleWidth / 2,
+                top + 28,
+                0xFFFFFFFF
+        );
 
         String incoming = "CHECK INCOMING";
         graphics.drawString(
@@ -136,6 +147,28 @@ public final class AirportSecuritySystemClient {
         graphics.fill(left + 2, top + 2, left + boxWidth + 2, top + boxHeight + 2, 0x55000000);
         graphics.fill(left, top, left + boxWidth, top + boxHeight, 0xE8101010);
         graphics.fill(left, top, left + boxWidth, top + 2, 0xFF4FA3FF);
+
+        graphics.drawCenteredString(
+                minecraft.font,
+                "Airport Security System",
+                width / 2,
+                top + 14,
+                0xFFFFFFFF
+        );
+
+        String title = switch (state) {
+            case AirportSecuritySystemStatusPayload.COMPLETE -> "Check complete";
+            case AirportSecuritySystemStatusPayload.FAILED -> "Check could not be completed";
+            default -> "Verifying your client";
+        };
+
+        graphics.drawCenteredString(
+                minecraft.font,
+                title,
+                width / 2,
+                top + 34,
+                0xFFE0E0E0
+        );
 
         if (total > 0) {
             int barLeft = left + 28;
