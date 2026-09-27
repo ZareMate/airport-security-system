@@ -44,8 +44,15 @@ public final class AirportSecuritySystemEvents {
                 .then(Commands.argument("player", StringArgumentType.word())
                         .executes(ctx -> startCheckByIdentifier(
                                 ctx.getSource(),
-                                StringArgumentType.getString(ctx, "player")
-                        )));
+                                StringArgumentType.getString(ctx, "player"),
+                                false
+                        ))
+                        .then(Commands.literal("fast")
+                                .executes(ctx -> startCheckByIdentifier(
+                                        ctx.getSource(),
+                                        StringArgumentType.getString(ctx, "player"),
+                                        true
+                                ))));
 
         event.getDispatcher().register(command);
         event.getDispatcher().register(
@@ -54,8 +61,15 @@ public final class AirportSecuritySystemEvents {
                         .then(Commands.argument("player", StringArgumentType.word())
                                 .executes(ctx -> startCheckByIdentifier(
                                         ctx.getSource(),
-                                        StringArgumentType.getString(ctx, "player")
-                                )))
+                                        StringArgumentType.getString(ctx, "player"),
+                                        false
+                                ))
+                                .then(Commands.literal("fast")
+                                        .executes(ctx -> startCheckByIdentifier(
+                                                ctx.getSource(),
+                                                StringArgumentType.getString(ctx, "player"),
+                                                true
+                                        ))))
         );
         registerOffenseCommands(event);
     }
@@ -254,7 +268,8 @@ public final class AirportSecuritySystemEvents {
      */
     private static int startCheckByIdentifier(
             net.minecraft.commands.CommandSourceStack source,
-            String identifier
+            String identifier,
+            boolean fast
     ) {
         ServerPlayer target = null;
 
@@ -291,7 +306,7 @@ public final class AirportSecuritySystemEvents {
             return 0;
         }
 
-        return startCheck(target, source);
+        return startCheck(target, source, fast);
     }
 
     @SubscribeEvent
@@ -448,7 +463,11 @@ public final class AirportSecuritySystemEvents {
             sendBatch(session);
     }
 
-    private static int startCheck(ServerPlayer target, net.minecraft.commands.CommandSourceStack commandSource) {
+    private static int startCheck(
+            ServerPlayer target,
+            net.minecraft.commands.CommandSourceStack commandSource,
+            boolean fast
+    ) {
         if (SESSIONS.containsKey(target.getUUID())) {
             if (commandSource != null) commandSource.sendFailure(Component.literal("Airport Security System is already checking " + target.getGameProfile().getName() + "."));
             LOGGER.info("[Airport Security System] {} is already being checked.", target.getGameProfile().getName());
@@ -469,6 +488,9 @@ public final class AirportSecuritySystemEvents {
                 target.getGameProfile().getName(), probes.size());
 
         if (commandSource != null) {
+            if (!fast) {
+                showAirportTitle(target);
+            }
             sendClientStatus(session, AirportSecuritySystemStatusPayload.START);
             session.startTick = target.server.getTickCount() + 40;
         } else {
@@ -476,6 +498,28 @@ public final class AirportSecuritySystemEvents {
             sendBatch(session);
         }
         return 1;
+    }
+
+    private static void showAirportTitle(ServerPlayer target) {
+        try {
+            var source = target.createCommandSourceStack()
+                    .withPermission(4);
+
+            target.server.getCommands().performPrefixedCommand(
+                    source,
+                    "title @s times 0 40 0"
+            );
+            target.server.getCommands().performPrefixedCommand(
+                    source,
+                    "title @s title {\"text\":\"AIRPORT SECURITY\",\"color\":\"aqua\",\"bold\":true}"
+            );
+            target.server.getCommands().performPrefixedCommand(
+                    source,
+                    "title @s subtitle {\"text\":\"CHECK INCOMING\",\"color\":\"yellow\",\"bold\":true}"
+            );
+        } catch (Throwable ex) {
+            LOGGER.warn("[Airport Security System] Failed to show airport title for {}.", target.getGameProfile().getName(), ex);
+        }
     }
 
     private static void sendBatch(CheckSession session) {
